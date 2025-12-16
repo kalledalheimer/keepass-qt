@@ -1,0 +1,48 @@
+# C++ build artifacts
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.exe
+
+# CMake
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+compile_commands.json
+
+# Qt
+*.pro.user
+*.pro.user.*
+*.qmlproject.user
+*.qmlproject.user.*
+.qmake.stash
+*.autosave
+*.user
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Generated files
+Makefile
+*.cbp
+
+# Temporary files
+*.log
+*.bak
+*.tmp
