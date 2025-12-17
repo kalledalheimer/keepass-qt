@@ -21,6 +21,7 @@
 #include "PwConstants.h"
 #include <QFile>
 #include <QDateTime>
+#include <QDebug>
 #include <cstring>
 #include <cstdlib>
 
@@ -488,8 +489,6 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
         return PWE_CRYPT_ERROR;
     }
 
-    protectTransformedMasterKey(false);
-
     // Hash the master password with the salt in the file
     UINT8 uFinalKey[32];
     QByteArray masterSeed = QByteArray(reinterpret_cast<const char*>(hdr.aMasterSeed), 16);
@@ -497,8 +496,6 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     QByteArray combined = masterSeed + transformedKey;
     QByteArray finalHash = SHA256::hash(combined);
     std::memcpy(uFinalKey, finalHash.constData(), 32);
-
-    protectTransformedMasterKey(true);
 
     // Verify encrypted part size is a multiple of 16 bytes
     if (pRepair == nullptr) {
@@ -576,6 +573,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     if (pRepair == nullptr) {
         QByteArray decryptedData = QByteArray(pVirtualFile + sizeof(PW_DBHEADER), uEncryptedPartSize);
         QByteArray vContentsHash = SHA256::hash(decryptedData);
+
         if (std::memcmp(hdr.aContentsHash, vContentsHash.constData(), 32) != 0) {
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
@@ -762,6 +760,7 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
     }
 
     // Add all meta-streams (UI state, etc.)
+    // IMPORTANT: Must be done BEFORE setting header counts below!
     addAllMetaStreams();
 
     //========================================================================
@@ -1102,16 +1101,12 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
         return PWE_CRYPT_ERROR;
     }
 
-    protectTransformedMasterKey(false);
-
     // Derive final encryption key
     BYTE finalKey[32];
     SHA256::Context keyHash;
     keyHash.update(hdr.aMasterSeed, 16);
     keyHash.update(m_pTransformedMasterKey, 32);
     keyHash.finalize(finalKey);
-
-    protectTransformedMasterKey(true);
 
     //========================================================================
     // STEP 8: Encrypt content
@@ -2039,14 +2034,54 @@ void PwManager::hashHeaderWithoutContentHash(const BYTE* pbHeader, QByteArray& v
 DWORD PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
 {
     // Reference: Meta-streams are special entries that store KeePass metadata
-    // like custom icons, UI state, etc.
-    // For now, just return 0 (no meta-streams processed)
+    // like custom icons, UI state, search history, etc.
+    // Meta-streams are identified by:
+    //   - pszBinaryDesc = "bin-stream"
+    //   - pszTitle = "Meta-Info"
+    //   - pszUserName = "SYSTEM"
+    //   - pszURL = "$"
+
     Q_UNUSED(bAcceptUnknown);
 
-    // TODO: Implement meta-stream parsing
-    // This will scan entries for special meta-stream markers and process them
+    DWORD dwRemoved = 0;
 
-    return 0;
+    // Scan entries from back to front (to safely remove while iterating)
+    for (DWORD i = m_dwNumEntries; i > 0; --i) {
+        PW_ENTRY* entry = &m_pEntries[i - 1];
+
+        // Check if this is a meta-stream entry
+        bool isMetaStream = false;
+        if (entry->pszBinaryDesc && strcmp(entry->pszBinaryDesc, "bin-stream") == 0 &&
+            entry->pszTitle && strcmp(entry->pszTitle, "Meta-Info") == 0 &&
+            entry->pszUserName && strcmp(entry->pszUserName, "SYSTEM") == 0 &&
+            entry->pszURL && strcmp(entry->pszURL, "$") == 0) {
+            isMetaStream = true;
+        }
+
+        if (isMetaStream) {
+            // TODO: Actually parse and load the meta-stream data
+            // For now, just remove the entry
+
+            // Free entry strings
+            if (entry->pszTitle) delete[] entry->pszTitle;
+            if (entry->pszUserName) delete[] entry->pszUserName;
+            if (entry->pszPassword) delete[] entry->pszPassword;
+            if (entry->pszURL) delete[] entry->pszURL;
+            if (entry->pszAdditional) delete[] entry->pszAdditional;
+            if (entry->pszBinaryDesc) delete[] entry->pszBinaryDesc;
+            if (entry->pBinaryData) delete[] entry->pBinaryData;
+
+            // Shift remaining entries down
+            for (DWORD j = i - 1; j < m_dwNumEntries - 1; ++j) {
+                m_pEntries[j] = m_pEntries[j + 1];
+            }
+
+            m_dwNumEntries--;
+            dwRemoved++;
+        }
+    }
+
+    return dwRemoved;
 }
 
 DWORD PwManager::deleteLostEntries()
