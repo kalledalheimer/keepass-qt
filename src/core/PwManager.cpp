@@ -34,14 +34,14 @@ namespace {
 
 PwManager::PwManager()
     : m_pEntries(nullptr)
-    , m_dwMaxEntries(0)
-    , m_dwNumEntries(0)
+    , m_maxEntries(0)
+    , m_numEntries(0)
     , m_pGroups(nullptr)
-    , m_dwMaxGroups(0)
-    , m_dwNumGroups(0)
+    , m_maxGroups(0)
+    , m_numGroups(0)
     , m_pLastEditedEntry(nullptr)
     , m_nAlgorithm(ALGO_AES)
-    , m_dwKeyEncRounds(PWM_STD_KEYENCROUNDS)
+    , m_keyEncRounds(PWM_STD_KEYENCROUNDS)
     , m_bUseTransactedFileWrites(true)
     , m_clr(Qt::white)
 {
@@ -53,9 +53,9 @@ PwManager::PwManager()
     m_dbLastHeader.dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
 
     // Initialize keys to zero
-    std::memset(m_pSessionKey, 0, PWM_SESSION_KEY_SIZE);
-    std::memset(m_pMasterKey, 0, 32);
-    std::memset(m_pTransformedMasterKey, 0, 32);
+    std::memset(m_sessionKey, 0, PWM_SESSION_KEY_SIZE);
+    std::memset(m_masterKey, 0, 32);
+    std::memset(m_transformedMasterKey, 0, 32);
 
     // Initialize UUID arrays
     std::memset(m_aLastSelectedEntryUuid, 0, 16);
@@ -65,7 +65,7 @@ PwManager::PwManager()
     m_dwLastTopVisibleGroupId = 0;
 
     // Generate session key for in-memory password encryption
-    Random::fillBuffer(m_pSessionKey, PWM_SESSION_KEY_SIZE);
+    Random::fillBuffer(m_sessionKey, PWM_SESSION_KEY_SIZE);
 }
 
 PwManager::~PwManager()
@@ -73,9 +73,9 @@ PwManager::~PwManager()
     cleanUp();
 
     // Securely erase sensitive data
-    MemUtil::mem_erase(m_pSessionKey, PWM_SESSION_KEY_SIZE);
-    MemUtil::mem_erase(m_pMasterKey, 32);
-    MemUtil::mem_erase(m_pTransformedMasterKey, 32);
+    MemUtil::mem_erase(m_sessionKey, PWM_SESSION_KEY_SIZE);
+    MemUtil::mem_erase(m_masterKey, 32);
+    MemUtil::mem_erase(m_transformedMasterKey, 32);
 }
 
 void PwManager::initPrimaryInstance()
@@ -110,8 +110,8 @@ void PwManager::allocEntries(DWORD uEntries)
     m_pEntries = new PW_ENTRY[uEntries];
     std::memset(m_pEntries, 0, uEntries * sizeof(PW_ENTRY));
 
-    m_dwMaxEntries = uEntries;
-    m_dwNumEntries = 0;
+    m_maxEntries = uEntries;
+    m_numEntries = 0;
 }
 
 void PwManager::deleteEntryList(bool bFreeStrings)
@@ -120,7 +120,7 @@ void PwManager::deleteEntryList(bool bFreeStrings)
         return;
 
     if (bFreeStrings) {
-        for (DWORD i = 0; i < m_dwNumEntries; ++i) {
+        for (DWORD i = 0; i < m_numEntries; ++i) {
             PW_ENTRY* e = &m_pEntries[i];
 
             // Unlock password before freeing (if it was locked)
@@ -144,8 +144,8 @@ void PwManager::deleteEntryList(bool bFreeStrings)
 
     delete[] m_pEntries;
     m_pEntries = nullptr;
-    m_dwMaxEntries = 0;
-    m_dwNumEntries = 0;
+    m_maxEntries = 0;
+    m_numEntries = 0;
 }
 
 void PwManager::allocGroups(DWORD uGroups)
@@ -156,8 +156,8 @@ void PwManager::allocGroups(DWORD uGroups)
     m_pGroups = new PW_GROUP[uGroups];
     std::memset(m_pGroups, 0, uGroups * sizeof(PW_GROUP));
 
-    m_dwMaxGroups = uGroups;
-    m_dwNumGroups = 0;
+    m_maxGroups = uGroups;
+    m_numGroups = 0;
 }
 
 void PwManager::deleteGroupList(bool bFreeStrings)
@@ -166,7 +166,7 @@ void PwManager::deleteGroupList(bool bFreeStrings)
         return;
 
     if (bFreeStrings) {
-        for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+        for (DWORD i = 0; i < m_numGroups; ++i) {
             PW_GROUP* g = &m_pGroups[i];
 
             // Free strings
@@ -179,30 +179,30 @@ void PwManager::deleteGroupList(bool bFreeStrings)
 
     delete[] m_pGroups;
     m_pGroups = nullptr;
-    m_dwMaxGroups = 0;
-    m_dwNumGroups = 0;
+    m_maxGroups = 0;
+    m_numGroups = 0;
 }
 
 DWORD PwManager::getNumberOfEntries() const
 {
-    return m_dwNumEntries;
+    return m_numEntries;
 }
 
 DWORD PwManager::getNumberOfGroups() const
 {
-    return m_dwNumGroups;
+    return m_numGroups;
 }
 
 PW_ENTRY* PwManager::getEntry(DWORD dwIndex)
 {
-    if (dwIndex >= m_dwNumEntries)
+    if (dwIndex >= m_numEntries)
         return nullptr;
     return &m_pEntries[dwIndex];
 }
 
 PW_GROUP* PwManager::getGroup(DWORD dwIndex)
 {
-    if (dwIndex >= m_dwNumGroups)
+    if (dwIndex >= m_numGroups)
         return nullptr;
     return &m_pGroups[dwIndex];
 }
@@ -216,7 +216,7 @@ void PwManager::lockEntryPassword(PW_ENTRY* pEntry)
     // This is a simple but effective in-memory encryption
     BYTE* password = reinterpret_cast<BYTE*>(pEntry->pszPassword);
     for (DWORD i = 0; i < pEntry->uPasswordLen; ++i) {
-        password[i] ^= m_pSessionKey[i % PWM_SESSION_KEY_SIZE];
+        password[i] ^= m_sessionKey[i % PWM_SESSION_KEY_SIZE];
     }
 }
 
@@ -228,7 +228,7 @@ void PwManager::unlockEntryPassword(PW_ENTRY* pEntry)
     // XOR again to restore original (XOR is reversible)
     BYTE* password = reinterpret_cast<BYTE*>(pEntry->pszPassword);
     for (DWORD i = 0; i < pEntry->uPasswordLen; ++i) {
-        password[i] ^= m_pSessionKey[i % PWM_SESSION_KEY_SIZE];
+        password[i] ^= m_sessionKey[i % PWM_SESSION_KEY_SIZE];
     }
 }
 
@@ -246,15 +246,15 @@ void PwManager::newDatabase()
     m_dbLastHeader.dwSignature1 = PWM_DBSIG_1;
     m_dbLastHeader.dwSignature2 = PWM_DBSIG_2;
     m_dbLastHeader.dwVersion = PWM_DBVER_DW;
-    m_dbLastHeader.dwKeyEncRounds = m_dwKeyEncRounds;
+    m_dbLastHeader.dwKeyEncRounds = m_keyEncRounds;
 
     // Generate new random seeds
     Random::fillBuffer(m_dbLastHeader.aMasterSeed, 16);
     Random::fillBuffer(m_dbLastHeader.aEncryptionIV, 16);
     Random::fillBuffer(m_dbLastHeader.aMasterSeed2, 32);
 
-    m_dwNumEntries = 0;
-    m_dwNumGroups = 0;
+    m_numEntries = 0;
+    m_numGroups = 0;
 }
 
 void PwManager::getNeverExpireTime(PW_TIME* pPwTime)
@@ -303,7 +303,7 @@ int PwManager::setMasterKey(const QString& masterKey, bool bDiskDrive,
 
     // Copy to master key
     if (keyData.size() >= 32) {
-        std::memcpy(m_pMasterKey, keyData.constData(), 32);
+        std::memcpy(m_masterKey, keyData.constData(), 32);
     }
 
     return PWE_SUCCESS;
@@ -325,12 +325,12 @@ bool PwManager::setAlgorithm(int nAlgorithm)
 
 DWORD PwManager::getKeyEncRounds() const
 {
-    return m_dwKeyEncRounds;
+    return m_keyEncRounds;
 }
 
 void PwManager::setKeyEncRounds(DWORD dwRounds)
 {
-    m_dwKeyEncRounds = dwRounds;
+    m_keyEncRounds = dwRounds;
 }
 
 const PW_DBHEADER* PwManager::getLastDatabaseHeader() const
@@ -359,19 +359,19 @@ bool PwManager::transformMasterKey(const BYTE* pKeySeed)
         return false;
 
     // Copy master key to transformed key buffer
-    std::memcpy(m_pTransformedMasterKey, m_pMasterKey, 32);
+    std::memcpy(m_transformedMasterKey, m_masterKey, 32);
 
     // Perform key transformation using OpenSSL
-    if (!KeyTransform::transform256(m_dwKeyEncRounds, m_pTransformedMasterKey, pKeySeed)) {
-        MemUtil::mem_erase(m_pTransformedMasterKey, 32);
+    if (!KeyTransform::transform256(m_keyEncRounds, m_transformedMasterKey, pKeySeed)) {
+        MemUtil::mem_erase(m_transformedMasterKey, 32);
         return false;
     }
 
     // Hash the transformed key with SHA-256
     QByteArray transformedHash = SHA256::hash(
-        QByteArray(reinterpret_cast<const char*>(m_pTransformedMasterKey), 32));
+        QByteArray(reinterpret_cast<const char*>(m_transformedMasterKey), 32));
 
-    std::memcpy(m_pTransformedMasterKey, transformedHash.constData(), 32);
+    std::memcpy(m_transformedMasterKey, transformedHash.constData(), 32);
 
     return true;
 }
@@ -381,7 +381,7 @@ void PwManager::protectMasterKey(bool bProtectKey)
     // XOR master key with session key for in-memory protection
     Q_UNUSED(bProtectKey);
     for (int i = 0; i < 32; ++i) {
-        m_pMasterKey[i] ^= m_pSessionKey[i % PWM_SESSION_KEY_SIZE];
+        m_masterKey[i] ^= m_sessionKey[i % PWM_SESSION_KEY_SIZE];
     }
 }
 
@@ -390,7 +390,7 @@ void PwManager::protectTransformedMasterKey(bool bProtectKey)
     // XOR transformed master key with session key for in-memory protection
     Q_UNUSED(bProtectKey);
     for (int i = 0; i < 32; ++i) {
-        m_pTransformedMasterKey[i] ^= m_pSessionKey[i % PWM_SESSION_KEY_SIZE];
+        m_transformedMasterKey[i] ^= m_sessionKey[i % PWM_SESSION_KEY_SIZE];
     }
 }
 
@@ -443,7 +443,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
         (hdr.dwSignature1 == PWM_DBSIG_1_KDBX_R && hdr.dwSignature2 == PWM_DBSIG_2_KDBX_R)) {
         MemUtil::mem_erase(pVirtualFile, uAllocated);
         delete[] pVirtualFile;
-        m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+        m_keyEncRounds = PWM_STD_KEYENCROUNDS;
         return PWE_UNSUPPORTED_KDBX;
     }
 
@@ -451,7 +451,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     if (hdr.dwSignature1 != PWM_DBSIG_1 || hdr.dwSignature2 != PWM_DBSIG_2) {
         MemUtil::mem_erase(pVirtualFile, uAllocated);
         delete[] pVirtualFile;
-        m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+        m_keyEncRounds = PWM_STD_KEYENCROUNDS;
         return PWE_INVALID_FILESIGNATURE;
     }
 
@@ -465,7 +465,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     if (hdr.dwGroups == 0) {
         MemUtil::mem_erase(pVirtualFile, uAllocated);
         delete[] pVirtualFile;
-        m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+        m_keyEncRounds = PWM_STD_KEYENCROUNDS;
         return PWE_DB_EMPTY;
     }
 
@@ -480,7 +480,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
         return PWE_INVALID_FILESTRUCTURE;
     }
 
-    m_dwKeyEncRounds = hdr.dwKeyEncRounds;
+    m_keyEncRounds = hdr.dwKeyEncRounds;
 
     // Generate transformed master key from master key
     if (!transformMasterKey(hdr.aMasterSeed2)) {
@@ -492,7 +492,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     // Hash the master password with the salt in the file
     UINT8 uFinalKey[32];
     QByteArray masterSeed = QByteArray(reinterpret_cast<const char*>(hdr.aMasterSeed), 16);
-    QByteArray transformedKey = QByteArray(reinterpret_cast<const char*>(m_pTransformedMasterKey), 32);
+    QByteArray transformedKey = QByteArray(reinterpret_cast<const char*>(m_transformedMasterKey), 32);
     QByteArray combined = masterSeed + transformedKey;
     QByteArray finalHash = SHA256::hash(combined);
     std::memcpy(uFinalKey, finalHash.constData(), 32);
@@ -503,7 +503,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
             MemUtil::mem_erase(uFinalKey, 32);
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
-            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            m_keyEncRounds = PWM_STD_KEYENCROUNDS;
             return PWE_INVALID_FILESIZE;
         }
     } else {
@@ -527,7 +527,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
             MemUtil::mem_erase(uFinalKey, 32);
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
-            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            m_keyEncRounds = PWM_STD_KEYENCROUNDS;
             return PWE_CRYPT_ERROR;
         }
 
@@ -541,7 +541,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
             MemUtil::mem_erase(uFinalKey, 32);
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
-            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            m_keyEncRounds = PWM_STD_KEYENCROUNDS;
             return PWE_CRYPT_ERROR;
         }
 
@@ -564,7 +564,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
             ((uEncryptedPartSize == 0) && ((hdr.dwGroups != 0) || (hdr.dwEntries != 0)))) {
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
-            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            m_keyEncRounds = PWM_STD_KEYENCROUNDS;
             return PWE_INVALID_KEY;
         }
     }
@@ -577,7 +577,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
         if (std::memcmp(hdr.aContentsHash, vContentsHash.constData(), 32) != 0) {
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
-            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            m_keyEncRounds = PWM_STD_KEYENCROUNDS;
             return PWE_INVALID_KEY;
         }
     }
@@ -755,7 +755,7 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
         return PWE_INVALID_PARAM;
     }
 
-    if (m_dwNumGroups == 0) {
+    if (m_numGroups == 0) {
         return PWE_DB_EMPTY;
     }
 
@@ -775,7 +775,7 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
     fileSize += 2 + 4 + extData.size();  // field type + field size + data
 
     // Calculate size of all groups
-    for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+    for (DWORD i = 0; i < m_numGroups; ++i) {
         fileSize += 94;  // Fixed overhead for group fields
 
         // Group name (UTF-8)
@@ -785,7 +785,7 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
     }
 
     // Calculate size of all entries
-    for (DWORD i = 0; i < m_dwNumEntries; ++i) {
+    for (DWORD i = 0; i < m_numEntries; ++i) {
         PW_ENTRY* entry = &m_pEntries[i];
 
         // Unlock password temporarily for serialization
@@ -858,9 +858,9 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
     }
 
     hdr.dwVersion = PWM_DBVER_DW;
-    hdr.dwGroups = m_dwNumGroups;
-    hdr.dwEntries = m_dwNumEntries;
-    hdr.dwKeyEncRounds = m_dwKeyEncRounds;
+    hdr.dwGroups = m_numGroups;
+    hdr.dwEntries = m_numEntries;
+    hdr.dwKeyEncRounds = m_keyEncRounds;
 
     // Generate random seeds and IV
     Random::fillBuffer(hdr.aMasterSeed, 16);
@@ -877,7 +877,7 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
 
     DWORD pos = sizeof(PW_DBHEADER);  // Skip header for now
 
-    for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+    for (DWORD i = 0; i < m_numGroups; ++i) {
         // First group gets extended data
         if (i == 0) {
             USHORT fieldType = 0x0000;
@@ -960,7 +960,7 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
     // STEP 5: Serialize entries
     //========================================================================
 
-    for (DWORD i = 0; i < m_dwNumEntries; ++i) {
+    for (DWORD i = 0; i < m_numEntries; ++i) {
         PW_ENTRY* entry = &m_pEntries[i];
 
         // Unlock password for serialization
@@ -1105,7 +1105,7 @@ int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
     BYTE finalKey[32];
     SHA256::Context keyHash;
     keyHash.update(hdr.aMasterSeed, 16);
-    keyHash.update(m_pTransformedMasterKey, 32);
+    keyHash.update(m_transformedMasterKey, 32);
     keyHash.finalize(finalKey);
 
     //========================================================================
@@ -1315,7 +1315,7 @@ bool PwManager::addMetaStream(const QString& metaDataDesc, BYTE* pData, DWORD dw
     }
 
     // Database must contain at least one group
-    if (m_dwNumGroups == 0) {
+    if (m_numGroups == 0) {
         return false;
     }
 
@@ -1407,7 +1407,7 @@ DWORD PwManager::getNumberOfItemsInGroup(const QString& groupName) const
 DWORD PwManager::getNumberOfItemsInGroupN(DWORD idGroup) const
 {
     DWORD count = 0;
-    for (DWORD i = 0; i < m_dwNumEntries; ++i) {
+    for (DWORD i = 0; i < m_numEntries; ++i) {
         if (m_pEntries[i].uGroupId == idGroup)
             count++;
     }
@@ -1419,7 +1419,7 @@ PW_ENTRY* PwManager::getEntryByUuid(const BYTE* pUuid)
     if (!pUuid)
         return nullptr;
 
-    for (DWORD i = 0; i < m_dwNumEntries; ++i) {
+    for (DWORD i = 0; i < m_numEntries; ++i) {
         if (std::memcmp(m_pEntries[i].uuid, pUuid, 16) == 0)
             return &m_pEntries[i];
     }
@@ -1429,7 +1429,7 @@ PW_ENTRY* PwManager::getEntryByUuid(const BYTE* pUuid)
 
 PW_GROUP* PwManager::getGroupById(DWORD idGroup)
 {
-    for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+    for (DWORD i = 0; i < m_numGroups; ++i) {
         if (m_pGroups[i].uGroupId == idGroup)
             return &m_pGroups[i];
     }
@@ -1439,7 +1439,7 @@ PW_GROUP* PwManager::getGroupById(DWORD idGroup)
 
 DWORD PwManager::getGroupByIdN(DWORD idGroup) const
 {
-    for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+    for (DWORD i = 0; i < m_numGroups; ++i) {
         if (m_pGroups[i].uGroupId == idGroup)
             return i;
     }
@@ -1473,7 +1473,7 @@ bool PwManager::addGroup(const PW_GROUP* pTemplate)
 
             // Check if this ID already exists
             bool exists = false;
-            for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+            for (DWORD i = 0; i < m_numGroups; ++i) {
                 if (m_pGroups[i].uGroupId == newId) {
                     exists = true;
                     break;
@@ -1488,32 +1488,32 @@ bool PwManager::addGroup(const PW_GROUP* pTemplate)
     }
 
     // Expand array if needed
-    if (m_dwNumGroups == m_dwMaxGroups) {
-        DWORD newMax = m_dwMaxGroups + 8;
+    if (m_numGroups == m_maxGroups) {
+        DWORD newMax = m_maxGroups + 8;
         PW_GROUP* newGroups = new PW_GROUP[newMax];
         std::memset(newGroups, 0, newMax * sizeof(PW_GROUP));
 
         // Copy existing groups
         if (m_pGroups != nullptr) {
-            std::memcpy(newGroups, m_pGroups, m_dwNumGroups * sizeof(PW_GROUP));
+            std::memcpy(newGroups, m_pGroups, m_numGroups * sizeof(PW_GROUP));
             delete[] m_pGroups;
         }
 
         m_pGroups = newGroups;
-        m_dwMaxGroups = newMax;
+        m_maxGroups = newMax;
     }
 
-    ++m_dwNumGroups;
-    return setGroup(m_dwNumGroups - 1, &groupCopy);
+    ++m_numGroups;
+    return setGroup(m_numGroups - 1, &groupCopy);
 }
 
 bool PwManager::setGroup(DWORD dwIndex, const PW_GROUP* pTemplate)
 {
-    Q_ASSERT(dwIndex < m_dwNumGroups);
+    Q_ASSERT(dwIndex < m_numGroups);
     Q_ASSERT(pTemplate != nullptr);
     Q_ASSERT(pTemplate->uGroupId != 0 && pTemplate->uGroupId != DWORD_MAX);
 
-    if (dwIndex >= m_dwNumGroups || pTemplate == nullptr) {
+    if (dwIndex >= m_numGroups || pTemplate == nullptr) {
         return false;
     }
 
@@ -1550,11 +1550,11 @@ bool PwManager::setGroup(DWORD dwIndex, const PW_GROUP* pTemplate)
 
 bool PwManager::setEntry(DWORD dwIndex, const PW_ENTRY* pTemplate)
 {
-    Q_ASSERT(dwIndex < m_dwNumEntries);
+    Q_ASSERT(dwIndex < m_numEntries);
     Q_ASSERT(pTemplate != nullptr);
     Q_ASSERT(pTemplate->uGroupId != 0 && pTemplate->uGroupId != DWORD_MAX);
 
-    if (dwIndex >= m_dwNumEntries || pTemplate == nullptr) {
+    if (dwIndex >= m_numEntries || pTemplate == nullptr) {
         return false;
     }
 
@@ -1666,19 +1666,19 @@ bool PwManager::addEntry(const PW_ENTRY* pTemplate)
     }
 
     // Expand array if needed
-    if (m_dwNumEntries == m_dwMaxEntries) {
-        DWORD newMax = m_dwMaxEntries + 32;
+    if (m_numEntries == m_maxEntries) {
+        DWORD newMax = m_maxEntries + 32;
         PW_ENTRY* newEntries = new PW_ENTRY[newMax];
         std::memset(newEntries, 0, newMax * sizeof(PW_ENTRY));
 
         // Copy existing entries
         if (m_pEntries != nullptr) {
-            std::memcpy(newEntries, m_pEntries, m_dwNumEntries * sizeof(PW_ENTRY));
+            std::memcpy(newEntries, m_pEntries, m_numEntries * sizeof(PW_ENTRY));
             delete[] m_pEntries;
         }
 
         m_pEntries = newEntries;
-        m_dwMaxEntries = newMax;
+        m_maxEntries = newMax;
     }
 
     // Copy template to local variable
@@ -1718,8 +1718,8 @@ bool PwManager::addEntry(const PW_ENTRY* pTemplate)
         entryCopy.pszBinaryDesc = const_cast<char*>(emptyString);
     }
 
-    ++m_dwNumEntries;
-    return setEntry(m_dwNumEntries - 1, &entryCopy);
+    ++m_numEntries;
+    return setEntry(m_numEntries - 1, &entryCopy);
 }
 
 bool PwManager::deleteEntry(DWORD dwIndex)
@@ -2046,7 +2046,7 @@ DWORD PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
     DWORD dwRemoved = 0;
 
     // Scan entries from back to front (to safely remove while iterating)
-    for (DWORD i = m_dwNumEntries; i > 0; --i) {
+    for (DWORD i = m_numEntries; i > 0; --i) {
         PW_ENTRY* entry = &m_pEntries[i - 1];
 
         // Check if this is a meta-stream entry
@@ -2072,11 +2072,11 @@ DWORD PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
             if (entry->pBinaryData) delete[] entry->pBinaryData;
 
             // Shift remaining entries down
-            for (DWORD j = i - 1; j < m_dwNumEntries - 1; ++j) {
+            for (DWORD j = i - 1; j < m_numEntries - 1; ++j) {
                 m_pEntries[j] = m_pEntries[j + 1];
             }
 
-            m_dwNumEntries--;
+            m_numEntries--;
             dwRemoved++;
         }
     }

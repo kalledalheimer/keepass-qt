@@ -330,24 +330,24 @@ private:
     void protectMasterKey(bool bProtectKey);
     void protectTransformedMasterKey(bool bProtectKey);
 
-    // Member variables (same as MFC version for compatibility)
-    PW_ENTRY* m_pEntries;
-    DWORD m_dwMaxEntries;
-    DWORD m_dwNumEntries;
+    // Member variables - Qt types and naming conventions
+    PW_ENTRY* m_pEntries;      // Pointer kept as-is (array of entries)
+    quint32 m_maxEntries;      // Maximum allocated entries
+    quint32 m_numEntries;      // Current number of entries
 
-    PW_GROUP* m_pGroups;
-    DWORD m_dwMaxGroups;
-    DWORD m_dwNumGroups;
+    PW_GROUP* m_pGroups;       // Pointer kept as-is (array of groups)
+    quint32 m_maxGroups;       // Maximum allocated groups
+    quint32 m_numGroups;       // Current number of groups
 
     PW_DBHEADER m_dbLastHeader;
     PW_ENTRY* m_pLastEditedEntry;
     QByteArray m_vHeaderHash;
 
-    BYTE m_pSessionKey[PWM_SESSION_KEY_SIZE];
-    BYTE m_pMasterKey[32];
-    BYTE m_pTransformedMasterKey[32];
-    int m_nAlgorithm;
-    DWORD m_dwKeyEncRounds;
+    quint8 m_sessionKey[PWM_SESSION_KEY_SIZE];  // Session key for in-memory encryption
+    quint8 m_masterKey[32];                      // Hashed master password
+    quint8 m_transformedMasterKey[32];           // Transformed key after N rounds
+    int m_nAlgorithm;                            // Encryption algorithm (ALGO_AES or ALGO_TWOFISH)
+    quint32 m_keyEncRounds;                      // Number of key transformation rounds
     QString m_strKeySource;
 
     QString m_strDefaultUserName;

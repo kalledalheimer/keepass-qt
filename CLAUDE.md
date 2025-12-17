@@ -390,6 +390,56 @@ void UnlockEntryPassword(PW_ENTRY* entry) {
   - Functions: `camelCase`
   - Members: `m_camelCase`
   - Constants: `UPPER_SNAKE_CASE`
+  - QString variables: `s` prefix (e.g., `sTitle`, `sPassword`)
+  - NOT: Windows-style `psz` prefix (pointer to string, zero-terminated)
+
+#### Type Usage
+
+**Use Qt types instead of Windows types:**
+- Use `quint8`, `quint16`, `quint32`, `quint64` instead of `BYTE`, `WORD`, `DWORD`, `QWORD`
+- Use `qint32`, `qint64` instead of `LONG`, `LONGLONG`
+- Use `bool` instead of `BOOL`
+
+**Exceptions (Windows types acceptable):**
+1. **File format compatibility** - KDB v1.x structures that must match binary layout:
+   - `PW_DBHEADER` field types
+   - `PW_GROUP` and `PW_ENTRY` serialization field sizes
+   - Field type identifiers in file I/O code
+2. **Third-party library interfaces** - When interfacing with external code:
+   - Rijndael/AES encryption API
+   - Twofish encryption API
+   - SHA-256 if using Windows CNG API (we use our own implementation)
+3. **Temporary transition** - During migration, structures being ported may temporarily retain Windows types until fully refactored
+
+**Internal code must use Qt types:**
+- Member variables (counters, sizes, indices)
+- Function parameters (unless interfacing with structures above)
+- Loop variables
+- Local variables
+
+#### String Handling
+
+**QString usage:**
+1. **Always use QString for:**
+   - User-visible strings (UI, messages, titles)
+   - Internal string manipulation
+   - File paths (use QString, not std::string or char*)
+   - Configuration values
+
+2. **char* usage (exceptions only):**
+   - KDB file format serialization (UTF-8 encoded, null-terminated)
+   - Only at the boundary when reading/writing binary file format
+   - Convert to QString immediately after reading
+   - Convert from QString just before writing
+
+3. **String conversion:**
+   - File format → `QString::fromUtf8(char*, length)`
+   - QString → File format: `QString::toUtf8()` returns `QByteArray`
+
+**Naming convention:**
+- QString variables: `sVariableName` (e.g., `sTitle`, `sUsername`)
+- char* only in file I/O: `pszFieldName` (legacy, at serialization boundary only)
+- QByteArray: `vVariableName` or descriptive name
 
 ### Comments
 
