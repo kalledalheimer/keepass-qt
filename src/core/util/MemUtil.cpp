@@ -13,11 +13,15 @@
 #include "../crypto/MemoryProtection.h"
 #include <cstdlib>
 
+namespace MemUtil {
+
 // External function called by mem_erase
 void secureEraseMemory(void* ptr, size_t size)
 {
     MemoryProtection::secureErase(ptr, size);
 }
+
+} // namespace MemUtil
 
 bool MemUtil::mem_equals_const_time(const void* ptr1, const void* ptr2, size_t size)
 {

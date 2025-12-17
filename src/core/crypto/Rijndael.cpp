@@ -31,7 +31,6 @@
 // This implementation works on 128 , 192 , 256 bit keys
 // and on 128 bit blocks
 
-#include "StdAfx.h"
 #include "Rijndael.h"
 
 static const UINT8 g_S[256]=

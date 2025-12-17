@@ -34,6 +34,14 @@ public:
     /// Get current time as PW_TIME
     static void getCurrentTime(PW_TIME* pTime);
 
+    /// Get "never expire" time as PW_TIME (year 4092)
+    static void getNeverExpireTime(PW_TIME* pTime);
+
+    /// Alias for unpackTime (for compatibility with MFC code)
+    static inline void timeToPwTime(const quint8* pBytes5, PW_TIME* pTime) {
+        unpackTime(pBytes5, pTime);
+    }
+
 private:
     PwUtil() = delete;  // Static class, no instantiation
 };

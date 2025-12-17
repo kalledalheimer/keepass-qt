@@ -15,6 +15,8 @@ add_library(keepass-core STATIC
     crypto/Rijndael.h
     crypto/Twofish.cpp
     crypto/Twofish.h
+    crypto/TwofishClass.cpp
+    crypto/TwofishClass.h
     crypto/KeyTransform.cpp
     crypto/KeyTransform.h
     crypto/MemoryProtection.cpp
@@ -43,6 +45,7 @@ add_library(keepass-core STATIC
 target_link_libraries(keepass-core
     PUBLIC
         Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
     PRIVATE
         OpenSSL::Crypto
 )

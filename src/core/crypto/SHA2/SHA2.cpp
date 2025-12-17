@@ -1,4 +1,6 @@
-#include "StdAfx.h" // DR: Added to compile with MFC
+// DR: Removed StdAfx.h include for Qt port
+#include <memory.h>
+#include <string.h>
 
 /*
  ---------------------------------------------------------------------------

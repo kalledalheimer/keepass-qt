@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - Qt Port
-  System Definitions - Compatibility header for MFC crypto code
+  System Definitions - Compatibility header for third-party crypto code
   Copyright (C) 2003-2025 Dominik Reichl <dominik.reichl@t-online.de>
   Qt Port Copyright (C) 2025
 
@@ -10,48 +10,64 @@
   (at your option) any later version.
 */
 
-#ifndef SYS_DEF_EX_H
-#define SYS_DEF_EX_H
+#ifndef SYSDEFEX_H
+#define SYSDEFEX_H
 
 #include <QtGlobal>
-#include "PwStructs.h"
 
-// Platform-independent type definitions for crypto code
-// These ensure the MFC crypto implementations work unchanged
+/**
+ * @file SysDefEx.h
+ * @brief Compatibility type definitions for third-party cryptographic code
+ *
+ * This header provides Windows/MFC-style type definitions for the third-party
+ * cryptographic implementations (Rijndael, Twofish, SHA2) which are public domain
+ * and remain unchanged from the original MFC version.
+ *
+ * NOTE: New code should NOT use these types. Use Qt types directly:
+ * - Use quint8, quint16, quint32, quint64 for unsigned integers
+ * - Use qint8, qint16, qint32, qint64 for signed integers
+ * - Use bool instead of BOOL
+ * - Use true/false instead of TRUE/FALSE
+ * - Use nullptr instead of NULL
+ *
+ * These legacy types exist ONLY for compatibility with the public domain
+ * crypto code that we cannot modify.
+ */
 
+// Legacy type definitions for crypto code compatibility
 #ifndef UINT8
-typedef quint8  UINT8;
+using UINT8 = quint8;
 #endif
 
 #ifndef UINT16
-typedef quint16 UINT16;
+using UINT16 = quint16;
 #endif
 
 #ifndef UINT32
-typedef quint32 UINT32;
+using UINT32 = quint32;
 #endif
 
 #ifndef UINT64
-typedef quint64 UINT64;
+using UINT64 = quint64;
 #endif
 
 #ifndef INT8
-typedef qint8   INT8;
+using INT8 = qint8;
 #endif
 
 #ifndef INT16
-typedef qint16  INT16;
+using INT16 = qint16;
 #endif
 
 #ifndef INT32
-typedef qint32  INT32;
+using INT32 = qint32;
 #endif
 
 #ifndef INT64
-typedef qint64  INT64;
+using INT64 = qint64;
 #endif
 
-// Assertion macro
+// Assertion macros
 #ifdef QT_DEBUG
     #define ASSERT Q_ASSERT
     #define VERIFY Q_ASSERT
@@ -60,12 +76,12 @@ typedef qint64  INT64;
     #define VERIFY(x) (x)
 #endif
 
-// NULL definition
+// Legacy definitions (for third-party crypto code only)
+// DO NOT USE in new code
 #ifndef NULL
     #define NULL nullptr
 #endif
 
-// Boolean values (for compatibility with MFC code)
 #ifndef TRUE
     #define TRUE  1
 #endif
@@ -74,4 +90,10 @@ typedef qint64  INT64;
     #define FALSE 0
 #endif
 
-#endif // SYS_DEF_EX_H
+// TCHAR compatibility (for crypto code that uses character arrays)
+// New code should use QString directly
+#ifndef TCHAR
+using TCHAR = char;
+#endif
+
+#endif // SYSDEFEX_H

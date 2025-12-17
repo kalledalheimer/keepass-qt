@@ -13,16 +13,22 @@
 #include "crypto/KeyTransform.h"
 #include "crypto/MemoryProtection.h"
 #include "crypto/SHA256.h"
+#include "crypto/Rijndael.h"
+#include "crypto/TwofishClass.h"
 #include "util/Random.h"
 #include "util/MemUtil.h"
+#include "util/PwUtil.h"
+#include "PwConstants.h"
 #include <QFile>
 #include <QDateTime>
 #include <cstring>
 #include <cstdlib>
 
 // Initial allocation sizes
-#define PWM_NUM_INITIAL_ENTRIES 256
-#define PWM_NUM_INITIAL_GROUPS  32
+namespace {
+    constexpr quint32 INITIAL_ENTRIES = 256;
+    constexpr quint32 INITIAL_GROUPS = 32;
+}
 
 PwManager::PwManager()
     : m_pEntries(nullptr)
@@ -230,8 +236,8 @@ void PwManager::newDatabase()
     cleanUp();
 
     // Allocate initial storage
-    allocEntries(PWM_NUM_INITIAL_ENTRIES);
-    allocGroups(PWM_NUM_INITIAL_GROUPS);
+    allocEntries(INITIAL_ENTRIES);
+    allocGroups(INITIAL_GROUPS);
 
     // Reset header
     std::memset(&m_dbLastHeader, 0, sizeof(PW_DBHEADER));
@@ -368,16 +374,377 @@ bool PwManager::transformMasterKey(const BYTE* pKeySeed)
     return true;
 }
 
+void PwManager::protectMasterKey(bool bProtectKey)
+{
+    // XOR master key with session key for in-memory protection
+    Q_UNUSED(bProtectKey);
+    for (int i = 0; i < 32; ++i) {
+        m_pMasterKey[i] ^= m_pSessionKey[i % PWM_SESSION_KEY_SIZE];
+    }
+}
+
+void PwManager::protectTransformedMasterKey(bool bProtectKey)
+{
+    // XOR transformed master key with session key for in-memory protection
+    Q_UNUSED(bProtectKey);
+    for (int i = 0; i < 32; ++i) {
+        m_pTransformedMasterKey[i] ^= m_pSessionKey[i % PWM_SESSION_KEY_SIZE];
+    }
+}
+
 int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
 {
-    // TODO: Implement full database opening
-    // This is the most critical function for KDB compatibility
-    // Will be implemented in next iteration
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:86-371
 
-    Q_UNUSED(filePath);
-    Q_UNUSED(pRepair);
+    if (filePath.isEmpty())
+        return PWE_INVALID_PARAM;
 
-    return PWE_INVALID_FILESTRUCTURE; // Placeholder
+    // Initialize repair info
+    if (pRepair)
+        std::memset(pRepair, 0, sizeof(PWDB_REPAIR_INFO));
+
+    // Open file
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly))
+        return PWE_NOFILEACCESS_READ;
+
+    qint64 uFileSize = file.size();
+    if (uFileSize < (qint64)sizeof(PW_DBHEADER)) {
+        file.close();
+        return PWE_INVALID_FILEHEADER;
+    }
+
+    // Allocate memory to hold complete file (with extra buffer space)
+    DWORD uAllocated = (DWORD)uFileSize + 16 + 1 + 64 + 4;
+    char* pVirtualFile = new char[uAllocated];
+    if (!pVirtualFile) {
+        file.close();
+        return PWE_NO_MEM;
+    }
+    std::memset(&pVirtualFile[uFileSize + 16], 0, 1 + 64);
+
+    // Read entire file into memory
+    if (file.read(pVirtualFile, uFileSize) != uFileSize) {
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        file.close();
+        return PWE_FILEERROR_READ;
+    }
+    file.close();
+
+    // Extract header structure
+    PW_DBHEADER hdr;
+    std::memcpy(&hdr, pVirtualFile, sizeof(PW_DBHEADER));
+
+    // Check if it's a KDBX file (KeePass 2.x)
+    if ((hdr.dwSignature1 == PWM_DBSIG_1_KDBX_P && hdr.dwSignature2 == PWM_DBSIG_2_KDBX_P) ||
+        (hdr.dwSignature1 == PWM_DBSIG_1_KDBX_R && hdr.dwSignature2 == PWM_DBSIG_2_KDBX_R)) {
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+        return PWE_UNSUPPORTED_KDBX;
+    }
+
+    // Check if we can open this (KDB v1.x)
+    if (hdr.dwSignature1 != PWM_DBSIG_1 || hdr.dwSignature2 != PWM_DBSIG_2) {
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+        return PWE_INVALID_FILESIGNATURE;
+    }
+
+    // Check version (allow minor version differences)
+    if ((hdr.dwVersion & 0xFFFFFF00) != (PWM_DBVER_DW & 0xFFFFFF00)) {
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        return PWE_INVALID_FILEHEADER;
+    }
+
+    if (hdr.dwGroups == 0) {
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+        return PWE_DB_EMPTY;
+    }
+
+    // Select algorithm
+    if (hdr.dwFlags & PWM_FLAG_RIJNDAEL)
+        m_nAlgorithm = ALGO_AES;
+    else if (hdr.dwFlags & PWM_FLAG_TWOFISH)
+        m_nAlgorithm = ALGO_TWOFISH;
+    else {
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        return PWE_INVALID_FILESTRUCTURE;
+    }
+
+    m_dwKeyEncRounds = hdr.dwKeyEncRounds;
+
+    // Generate transformed master key from master key
+    if (!transformMasterKey(hdr.aMasterSeed2)) {
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        return PWE_CRYPT_ERROR;
+    }
+
+    protectTransformedMasterKey(false);
+
+    // Hash the master password with the salt in the file
+    UINT8 uFinalKey[32];
+    QByteArray masterSeed = QByteArray(reinterpret_cast<const char*>(hdr.aMasterSeed), 16);
+    QByteArray transformedKey = QByteArray(reinterpret_cast<const char*>(m_pTransformedMasterKey), 32);
+    QByteArray combined = masterSeed + transformedKey;
+    QByteArray finalHash = SHA256::hash(combined);
+    std::memcpy(uFinalKey, finalHash.constData(), 32);
+
+    protectTransformedMasterKey(true);
+
+    // Verify encrypted part size is a multiple of 16 bytes
+    if (pRepair == nullptr) {
+        if (((uFileSize - sizeof(PW_DBHEADER)) % 16) != 0) {
+            MemUtil::mem_erase(uFinalKey, 32);
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            return PWE_INVALID_FILESIZE;
+        }
+    } else {
+        // Repair mode: truncate to multiple of 16
+        if (((uFileSize - sizeof(PW_DBHEADER)) % 16) != 0) {
+            uFileSize -= sizeof(PW_DBHEADER);
+            uFileSize &= ~0xFUL;
+            uFileSize += sizeof(PW_DBHEADER);
+        }
+        pRepair->dwOriginalGroupCount = hdr.dwGroups;
+        pRepair->dwOriginalEntryCount = hdr.dwEntries;
+    }
+
+    // Decrypt the database
+    DWORD uEncryptedPartSize = 0;
+
+    if (m_nAlgorithm == ALGO_AES) {
+        CRijndael aes;
+        if (aes.Init(CRijndael::CBC, CRijndael::DecryptDir, uFinalKey,
+                     CRijndael::Key32Bytes, hdr.aEncryptionIV) != RIJNDAEL_SUCCESS) {
+            MemUtil::mem_erase(uFinalKey, 32);
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            return PWE_CRYPT_ERROR;
+        }
+
+        uEncryptedPartSize = (DWORD)aes.PadDecrypt(
+            (UINT8*)pVirtualFile + sizeof(PW_DBHEADER),
+            uFileSize - sizeof(PW_DBHEADER),
+            (UINT8*)pVirtualFile + sizeof(PW_DBHEADER));
+    } else if (m_nAlgorithm == ALGO_TWOFISH) {
+        CTwofish twofish;
+        if (!twofish.Init(uFinalKey, 32, hdr.aEncryptionIV)) {
+            MemUtil::mem_erase(uFinalKey, 32);
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            return PWE_CRYPT_ERROR;
+        }
+
+        uEncryptedPartSize = (DWORD)twofish.PadDecrypt(
+            (UINT8*)pVirtualFile + sizeof(PW_DBHEADER),
+            uFileSize - sizeof(PW_DBHEADER),
+            (UINT8*)pVirtualFile + sizeof(PW_DBHEADER));
+    } else {
+        MemUtil::mem_erase(uFinalKey, 32);
+        MemUtil::mem_erase(pVirtualFile, uAllocated);
+        delete[] pVirtualFile;
+        return PWE_INVALID_FILESTRUCTURE;
+    }
+
+    MemUtil::mem_erase(uFinalKey, 32);
+
+    // Check decryption success
+    if (pRepair == nullptr) {
+        if ((uEncryptedPartSize > 2147483446) ||
+            ((uEncryptedPartSize == 0) && ((hdr.dwGroups != 0) || (hdr.dwEntries != 0)))) {
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            return PWE_INVALID_KEY;
+        }
+    }
+
+    // Verify content hash (check if key is correct)
+    if (pRepair == nullptr) {
+        QByteArray decryptedData = QByteArray(pVirtualFile + sizeof(PW_DBHEADER), uEncryptedPartSize);
+        QByteArray vContentsHash = SHA256::hash(decryptedData);
+        if (std::memcmp(hdr.aContentsHash, vContentsHash.constData(), 32) != 0) {
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            m_dwKeyEncRounds = PWM_STD_KEYENCROUNDS;
+            return PWE_INVALID_KEY;
+        }
+    }
+
+    // Create new database and initialize internal structures
+    newDatabase();
+
+    // Store header hash (without content hash field)
+    hashHeaderWithoutContentHash((BYTE*)pVirtualFile, m_vHeaderHash);
+
+    // Parse groups from the decrypted data
+    DWORD pos = sizeof(PW_DBHEADER);
+    DWORD uCurGroup = 0;
+
+    PW_GROUP pwGroupTemplate;
+    std::memset(&pwGroupTemplate, 0, sizeof(PW_GROUP));
+    PwUtil::getNeverExpireTime(&pwGroupTemplate.tExpire);
+
+    while (uCurGroup < hdr.dwGroups) {
+        char* p = &pVirtualFile[pos];
+
+        // Check bounds
+        if (pos + 2 > (DWORD)uFileSize) {
+            delete[] pwGroupTemplate.pszGroupName;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        USHORT usFieldType;
+        std::memcpy(&usFieldType, p, 2);
+        p += 2; pos += 2;
+
+        if (pos + 4 > (DWORD)uFileSize) {
+            delete[] pwGroupTemplate.pszGroupName;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        DWORD dwFieldSize;
+        std::memcpy(&dwFieldSize, p, 4);
+        p += 4; pos += 4;
+
+        if (pos + dwFieldSize > (DWORD)uFileSize) {
+            delete[] pwGroupTemplate.pszGroupName;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        if (!readGroupField(usFieldType, dwFieldSize, (BYTE*)p, &pwGroupTemplate, pRepair)) {
+            delete[] pwGroupTemplate.pszGroupName;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        if (usFieldType == 0xFFFF)
+            ++uCurGroup;
+
+        p += dwFieldSize;
+        pos += dwFieldSize;
+    }
+    delete[] pwGroupTemplate.pszGroupName;
+
+    // Parse entries from the decrypted data
+    DWORD uCurEntry = 0;
+
+    PW_ENTRY pwEntryTemplate;
+    std::memset(&pwEntryTemplate, 0, sizeof(PW_ENTRY));
+    PwUtil::getNeverExpireTime(&pwEntryTemplate.tExpire);
+
+    while (uCurEntry < hdr.dwEntries) {
+        char* p = &pVirtualFile[pos];
+
+        if (pos + 2 > (DWORD)uFileSize) {
+            delete[] pwEntryTemplate.pszTitle;
+            delete[] pwEntryTemplate.pszURL;
+            delete[] pwEntryTemplate.pszUserName;
+            delete[] pwEntryTemplate.pszPassword;
+            delete[] pwEntryTemplate.pszAdditional;
+            delete[] pwEntryTemplate.pszBinaryDesc;
+            delete[] pwEntryTemplate.pBinaryData;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        USHORT usFieldType;
+        std::memcpy(&usFieldType, p, 2);
+        p += 2; pos += 2;
+
+        if (pos + 4 > (DWORD)uFileSize) {
+            delete[] pwEntryTemplate.pszTitle;
+            delete[] pwEntryTemplate.pszURL;
+            delete[] pwEntryTemplate.pszUserName;
+            delete[] pwEntryTemplate.pszPassword;
+            delete[] pwEntryTemplate.pszAdditional;
+            delete[] pwEntryTemplate.pszBinaryDesc;
+            delete[] pwEntryTemplate.pBinaryData;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        DWORD dwFieldSize;
+        std::memcpy(&dwFieldSize, p, 4);
+        p += 4; pos += 4;
+
+        if (pos + dwFieldSize > (DWORD)uFileSize) {
+            delete[] pwEntryTemplate.pszTitle;
+            delete[] pwEntryTemplate.pszURL;
+            delete[] pwEntryTemplate.pszUserName;
+            delete[] pwEntryTemplate.pszPassword;
+            delete[] pwEntryTemplate.pszAdditional;
+            delete[] pwEntryTemplate.pszBinaryDesc;
+            delete[] pwEntryTemplate.pBinaryData;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        if (!readEntryField(usFieldType, dwFieldSize, (BYTE*)p, &pwEntryTemplate, pRepair)) {
+            delete[] pwEntryTemplate.pszTitle;
+            delete[] pwEntryTemplate.pszURL;
+            delete[] pwEntryTemplate.pszUserName;
+            delete[] pwEntryTemplate.pszPassword;
+            delete[] pwEntryTemplate.pszAdditional;
+            delete[] pwEntryTemplate.pszBinaryDesc;
+            delete[] pwEntryTemplate.pBinaryData;
+            MemUtil::mem_erase(pVirtualFile, uAllocated);
+            delete[] pVirtualFile;
+            return PWE_INVALID_FILESTRUCTURE;
+        }
+
+        if (usFieldType == 0xFFFF)
+            ++uCurEntry;
+
+        p += dwFieldSize;
+        pos += dwFieldSize;
+    }
+    delete[] pwEntryTemplate.pszTitle;
+    delete[] pwEntryTemplate.pszURL;
+    delete[] pwEntryTemplate.pszUserName;
+    delete[] pwEntryTemplate.pszPassword;
+    delete[] pwEntryTemplate.pszAdditional;
+    delete[] pwEntryTemplate.pszBinaryDesc;
+    delete[] pwEntryTemplate.pBinaryData;
+
+    // Store last header
+    std::memcpy(&m_dbLastHeader, &hdr, sizeof(PW_DBHEADER));
+
+    // Erase and delete memory file
+    MemUtil::mem_erase(pVirtualFile, uAllocated);
+    delete[] pVirtualFile;
+
+    // Load and remove meta-streams
+    const DWORD dwRemovedStreams = loadAndRemoveAllMetaStreams(true);
+    if (pRepair)
+        pRepair->dwRecognizedMetaStreamCount = dwRemovedStreams;
+
+    deleteLostEntries();
+    fixGroupTree();
+
+    return PWE_SUCCESS;
 }
 
 int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
@@ -492,7 +859,310 @@ void PwManager::sortGroupList()
 
 void PwManager::fixGroupTree()
 {
-    // TODO: Implement
+    // TODO: Implement - will fix group tree hierarchy
+}
+
+// Helper function to convert UTF-8 to QString (and allocate TCHAR string)
+static TCHAR* utf8ToString(const BYTE* pUTF8String)
+{
+    if (!pUTF8String)
+        return nullptr;
+
+    QString str = QString::fromUtf8(reinterpret_cast<const char*>(pUTF8String));
+    QByteArray utf8 = str.toUtf8();
+
+    TCHAR* result = new TCHAR[utf8.length() + 1];
+    std::memcpy(result, utf8.constData(), utf8.length());
+    result[utf8.length()] = 0;
+
+    return result;
+}
+
+bool PwManager::readGroupField(USHORT usFieldType, DWORD dwFieldSize,
+                                const BYTE* pData, PW_GROUP* pGroup, PWDB_REPAIR_INFO* pRepair)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:788-850
+
+    Q_UNUSED(pRepair);
+    BYTE aCompressedTime[5];
+
+    switch (usFieldType) {
+    case GRP_FIELD_EXT_DATA: // 0x0000
+        if (!readExtData(pData, dwFieldSize, pGroup, nullptr, pRepair))
+            return false;
+        break;
+
+    case GRP_FIELD_ID: // 0x0001
+        if (dwFieldSize != 4)
+            return false;
+        std::memcpy(&pGroup->uGroupId, pData, 4);
+        break;
+
+    case GRP_FIELD_NAME: // 0x0002
+        if (dwFieldSize == 0)
+            return false;
+        delete[] pGroup->pszGroupName;
+        pGroup->pszGroupName = utf8ToString(pData);
+        break;
+
+    case GRP_FIELD_CREATION: // 0x0003
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pGroup->tCreation);
+        break;
+
+    case GRP_FIELD_LASTMOD: // 0x0004
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pGroup->tLastMod);
+        break;
+
+    case GRP_FIELD_LASTACCESS: // 0x0005
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pGroup->tLastAccess);
+        break;
+
+    case GRP_FIELD_EXPIRE: // 0x0006
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pGroup->tExpire);
+        break;
+
+    case GRP_FIELD_IMAGEID: // 0x0007
+        if (dwFieldSize != 4)
+            return false;
+        std::memcpy(&pGroup->uImageId, pData, 4);
+        break;
+
+    case GRP_FIELD_LEVEL: // 0x0008
+        if (dwFieldSize != 2)
+            return false;
+        std::memcpy(&pGroup->usLevel, pData, 2);
+        break;
+
+    case GRP_FIELD_FLAGS: // 0x0009
+        if (dwFieldSize != 4)
+            return false;
+        std::memcpy(&pGroup->dwFlags, pData, 4);
+        break;
+
+    case GRP_FIELD_END: // 0xFFFF
+        addGroup(pGroup);
+        delete[] pGroup->pszGroupName;
+        pGroup->pszGroupName = nullptr;
+        std::memset(pGroup, 0, sizeof(PW_GROUP));
+        PwUtil::getNeverExpireTime(&pGroup->tExpire);
+        break;
+
+    default:
+        // Unknown field type - ignore
+        break;
+    }
+
+    return true;
+}
+
+bool PwManager::readEntryField(USHORT usFieldType, DWORD dwFieldSize,
+                                const BYTE* pData, PW_ENTRY* pEntry, PWDB_REPAIR_INFO* pRepair)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:852-950
+
+    Q_UNUSED(pRepair);
+    BYTE aCompressedTime[5];
+
+    switch (usFieldType) {
+    case ENT_FIELD_EXT_DATA: // 0x0000
+        if (!readExtData(pData, dwFieldSize, nullptr, pEntry, pRepair))
+            return false;
+        break;
+
+    case ENT_FIELD_UUID: // 0x0001
+        if (dwFieldSize != 16)
+            return false;
+        std::memcpy(pEntry->uuid, pData, 16);
+        break;
+
+    case ENT_FIELD_GROUPID: // 0x0002
+        if (dwFieldSize != 4)
+            return false;
+        std::memcpy(&pEntry->uGroupId, pData, 4);
+        break;
+
+    case ENT_FIELD_IMAGEID: // 0x0003
+        if (dwFieldSize != 4)
+            return false;
+        std::memcpy(&pEntry->uImageId, pData, 4);
+        break;
+
+    case ENT_FIELD_TITLE: // 0x0004
+        if (dwFieldSize == 0)
+            return false;
+        delete[] pEntry->pszTitle;
+        pEntry->pszTitle = utf8ToString(pData);
+        break;
+
+    case ENT_FIELD_URL: // 0x0005
+        if (dwFieldSize == 0)
+            return false;
+        delete[] pEntry->pszURL;
+        pEntry->pszURL = utf8ToString(pData);
+        break;
+
+    case ENT_FIELD_USERNAME: // 0x0006
+        if (dwFieldSize == 0)
+            return false;
+        delete[] pEntry->pszUserName;
+        pEntry->pszUserName = utf8ToString(pData);
+        break;
+
+    case ENT_FIELD_PASSWORD: // 0x0007
+        if (dwFieldSize == 0)
+            return false;
+        // Securely erase old password
+        if (pEntry->pszPassword) {
+            MemUtil::mem_erase(pEntry->pszPassword, std::strlen(pEntry->pszPassword));
+        }
+        delete[] pEntry->pszPassword;
+        pEntry->pszPassword = utf8ToString(pData);
+        pEntry->uPasswordLen = (DWORD)std::strlen(pEntry->pszPassword);
+        break;
+
+    case ENT_FIELD_ADDITIONAL: // 0x0008
+        if (dwFieldSize == 0)
+            return false;
+        delete[] pEntry->pszAdditional;
+        pEntry->pszAdditional = utf8ToString(pData);
+        break;
+
+    case ENT_FIELD_CREATION: // 0x0009
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pEntry->tCreation);
+        break;
+
+    case ENT_FIELD_LASTMOD: // 0x000A
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pEntry->tLastMod);
+        break;
+
+    case ENT_FIELD_LASTACCESS: // 0x000B
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pEntry->tLastAccess);
+        break;
+
+    case ENT_FIELD_EXPIRE: // 0x000C
+        if (dwFieldSize != 5)
+            return false;
+        std::memcpy(aCompressedTime, pData, 5);
+        PwUtil::timeToPwTime(aCompressedTime, &pEntry->tExpire);
+        break;
+
+    case ENT_FIELD_BINARYDESC: // 0x000D
+        if (dwFieldSize == 0)
+            return false;
+        delete[] pEntry->pszBinaryDesc;
+        pEntry->pszBinaryDesc = utf8ToString(pData);
+        break;
+
+    case ENT_FIELD_BINARYDATA: // 0x000E
+        delete[] pEntry->pBinaryData;
+        pEntry->pBinaryData = nullptr;
+        if (dwFieldSize != 0) {
+            pEntry->pBinaryData = new BYTE[dwFieldSize];
+            std::memcpy(pEntry->pBinaryData, pData, dwFieldSize);
+            pEntry->uBinaryDataLen = dwFieldSize;
+        } else {
+            pEntry->uBinaryDataLen = 0;
+        }
+        break;
+
+    case ENT_FIELD_END: // 0xFFFF
+        if (dwFieldSize != 0)
+            return false;
+        addEntry(pEntry);
+        // Clean up entry template
+        if (pEntry->pszPassword) {
+            MemUtil::mem_erase(pEntry->pszPassword, std::strlen(pEntry->pszPassword));
+        }
+        delete[] pEntry->pszTitle;
+        delete[] pEntry->pszURL;
+        delete[] pEntry->pszUserName;
+        delete[] pEntry->pszPassword;
+        delete[] pEntry->pszAdditional;
+        delete[] pEntry->pszBinaryDesc;
+        delete[] pEntry->pBinaryData;
+        std::memset(pEntry, 0, sizeof(PW_ENTRY));
+        PwUtil::getNeverExpireTime(&pEntry->tExpire);
+        break;
+
+    default:
+        // Unknown field type - ignore
+        break;
+    }
+
+    return true;
+}
+
+bool PwManager::readExtData(const BYTE* pData, DWORD dwDataSize, PW_GROUP* pg,
+                             PW_ENTRY* pe, PWDB_REPAIR_INFO* pRepair)
+{
+    // Reference: Extended data reading - for future implementation
+    // For now, just ignore extended data
+    Q_UNUSED(pData);
+    Q_UNUSED(dwDataSize);
+    Q_UNUSED(pg);
+    Q_UNUSED(pe);
+    Q_UNUSED(pRepair);
+
+    return true; // Silently ignore extended data for now
+}
+
+void PwManager::hashHeaderWithoutContentHash(const BYTE* pbHeader, QByteArray& vHash)
+{
+    // Hash header excluding the content hash field (bytes 56-87)
+    // Reference: MFC version hashes header without content hash for verification
+
+    QByteArray headerPart1 = QByteArray(reinterpret_cast<const char*>(pbHeader), 56);
+    QByteArray headerPart2 = QByteArray(reinterpret_cast<const char*>(pbHeader + 88), 36);
+    QByteArray combined = headerPart1 + headerPart2;
+
+    vHash = SHA256::hash(combined);
+}
+
+DWORD PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
+{
+    // Reference: Meta-streams are special entries that store KeePass metadata
+    // like custom icons, UI state, etc.
+    // For now, just return 0 (no meta-streams processed)
+    Q_UNUSED(bAcceptUnknown);
+
+    // TODO: Implement meta-stream parsing
+    // This will scan entries for special meta-stream markers and process them
+
+    return 0;
+}
+
+DWORD PwManager::deleteLostEntries()
+{
+    // Delete entries that reference non-existent groups
+    // Reference: MFC version removes orphaned entries
+
+    DWORD dwDeleted = 0;
+
+    // TODO: Implement orphan entry deletion
+    // For now, assume all entries are valid
+
+    return dwDeleted;
 }
 
 // More stub implementations continue...

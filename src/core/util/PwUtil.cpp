@@ -88,3 +88,20 @@ void PwUtil::getCurrentTime(PW_TIME* pTime)
     QDateTime now = QDateTime::currentDateTime();
     dateTimeToPwTime(now, pTime);
 }
+
+void PwUtil::getNeverExpireTime(PW_TIME* pTime)
+{
+    if (!pTime)
+        return;
+
+    // Reference: MFC PwFileImpl.cpp uses year 4092
+    // #define RESET_TIME_FIELD_EXPIRE(pTimeEx) { \
+    //   (pTimeEx)->btDay = 28; (pTimeEx)->btHour = 23; (pTimeEx)->btMinute = 59; \
+    //   (pTimeEx)->btMonth = 12; (pTimeEx)->btSecond = 59; (pTimeEx)->shYear = 4092; }
+    pTime->shYear = 4092;
+    pTime->btMonth = 12;
+    pTime->btDay = 28;
+    pTime->btHour = 23;
+    pTime->btMinute = 59;
+    pTime->btSecond = 59;
+}

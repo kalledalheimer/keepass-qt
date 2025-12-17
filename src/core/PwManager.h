@@ -18,77 +18,167 @@
 #include "PwStructs.h"
 
 // General product information
-#define PWM_PRODUCT_NAME       "KeePass Password Safe"
-#define PWM_PRODUCT_NAME_SHORT "KeePass"
-#define PWM_VERSION_STR        "1.43"
-#define PWM_VERSION_DW         0x012B0000
-#define PWM_VERSION_QW         0x0001002B00000000ULL
+namespace PwProduct {
+    constexpr const char* NAME = "KeePass Password Safe";
+    constexpr const char* NAME_SHORT = "KeePass";
+    constexpr const char* VERSION_STR = "1.43";
+    constexpr quint32 VERSION_DW = 0x012B0000;
+    constexpr quint64 VERSION_QW = 0x0001002B00000000ULL;
+}
 
 // Database file signature bytes (MUST match MFC version exactly)
-#define PWM_DBSIG_1      0x9AA2D903
-#define PWM_DBSIG_2      0xB54BFB65
-#define PWM_DBVER_DW     0x00030004
+namespace PwDbSignature {
+    constexpr quint32 SIG1 = 0x9AA2D903;
+    constexpr quint32 SIG2 = 0xB54BFB65;
+    constexpr quint32 VERSION = 0x00030004;
 
-// KeePass 2.x database signatures (for detection only)
-#define PWM_DBSIG_1_KDBX_P 0x9AA2D903
-#define PWM_DBSIG_2_KDBX_P 0xB54BFB66
-#define PWM_DBSIG_1_KDBX_R 0x9AA2D903
-#define PWM_DBSIG_2_KDBX_R 0xB54BFB67
+    // KeePass 2.x database signatures (for detection only)
+    constexpr quint32 SIG1_KDBX_PRE = 0x9AA2D903;
+    constexpr quint32 SIG2_KDBX_PRE = 0xB54BFB66;
+    constexpr quint32 SIG1_KDBX_REL = 0x9AA2D903;
+    constexpr quint32 SIG2_KDBX_REL = 0xB54BFB67;
+}
 
 // Standard constants
-#define PWM_SESSION_KEY_SIZE     32
-#define PWM_STD_KEYENCROUNDS     600000  // Default key transformation rounds
+namespace PwConstants {
+    constexpr size_t SESSION_KEY_SIZE = 32;
+    constexpr quint32 STD_KEYENC_ROUNDS = 600000;  ///< Default key transformation rounds
+}
 
 // Encryption algorithms
-#define ALGO_AES         0
-#define ALGO_TWOFISH     1
+enum class PwAlgorithm : int {
+    AES = 0,
+    TWOFISH = 1
+};
 
 // Error codes
-#define PWE_UNKNOWN                 0
-#define PWE_SUCCESS                 1
-#define PWE_INVALID_PARAM           2
-#define PWE_NO_MEM                  3
-#define PWE_INVALID_KEY             4
-#define PWE_NOFILEACCESS_READ       5
-#define PWE_NOFILEACCESS_WRITE      6
-#define PWE_FILEERROR_READ          7
-#define PWE_FILEERROR_WRITE         8
-#define PWE_INVALID_RANDOMSOURCE    9
-#define PWE_INVALID_FILESTRUCTURE  10
-#define PWE_CRYPT_ERROR            11
-#define PWE_INVALID_FILESIZE       12
-#define PWE_INVALID_FILESIGNATURE  13
-#define PWE_INVALID_FILEHEADER     14
-#define PWE_NOFILEACCESS_READ_KEY  15
-#define PWE_KEYPROV_INVALID_KEY    16
-#define PWE_FILEERROR_VERIFY       17
-#define PWE_UNSUPPORTED_KDBX       18
-#define PWE_GETLASTERROR           19
-#define PWE_DB_EMPTY               20
-#define PWE_ATTACH_TOOLARGE        21
+enum class PwError : int {
+    UNKNOWN = 0,
+    SUCCESS = 1,
+    INVALID_PARAM = 2,
+    NO_MEM = 3,
+    INVALID_KEY = 4,
+    NOFILEACCESS_READ = 5,
+    NOFILEACCESS_WRITE = 6,
+    FILEERROR_READ = 7,
+    FILEERROR_WRITE = 8,
+    INVALID_RANDOMSOURCE = 9,
+    INVALID_FILESTRUCTURE = 10,
+    CRYPT_ERROR = 11,
+    INVALID_FILESIZE = 12,
+    INVALID_FILESIGNATURE = 13,
+    INVALID_FILEHEADER = 14,
+    NOFILEACCESS_READ_KEY = 15,
+    KEYPROV_INVALID_KEY = 16,
+    FILEERROR_VERIFY = 17,
+    UNSUPPORTED_KDBX = 18,
+    GETLASTERROR = 19,
+    DB_EMPTY = 20,
+    ATTACH_TOOLARGE = 21
+};
 
 // Field flags (for Find function)
-#define PWMF_TITLE              1
-#define PWMF_USER               2
-#define PWMF_URL                4
-#define PWMF_PASSWORD           8
-#define PWMF_ADDITIONAL        16
-#define PWMF_GROUPNAME         32
-#define PWMF_CREATION          64
-#define PWMF_LASTMOD          128
-#define PWMF_LASTACCESS       256
-#define PWMF_EXPIRE           512
-#define PWMF_UUID            1024
+namespace PwFieldFlags {
+    constexpr quint32 TITLE = 1;
+    constexpr quint32 USER = 2;
+    constexpr quint32 URL = 4;
+    constexpr quint32 PASSWORD = 8;
+    constexpr quint32 ADDITIONAL = 16;
+    constexpr quint32 GROUPNAME = 32;
+    constexpr quint32 CREATION = 64;
+    constexpr quint32 LASTMOD = 128;
+    constexpr quint32 LASTACCESS = 256;
+    constexpr quint32 EXPIRE = 512;
+    constexpr quint32 UUID = 1024;
+}
 
 // Search flags
-#define PWMS_REGEX       0x10000000
+namespace PwSearchFlags {
+    constexpr quint32 REGEX = 0x10000000;
+}
 
 // Group flags
-#define PWGF_EXPANDED    1
+namespace PwGroupFlags {
+    constexpr quint32 EXPANDED = 1;
+}
 
-/// Password Manager - Core database management class
-/// This class manages the KeePass database (KDB v1.x format)
-/// Ported from MFC CPwManager to Qt
+// Legacy compatibility macros (temporary - to be removed)
+// TODO: Migrate all code to use new namespaced constants
+#define PWM_PRODUCT_NAME       PwProduct::NAME
+#define PWM_PRODUCT_NAME_SHORT PwProduct::NAME_SHORT
+#define PWM_VERSION_STR        PwProduct::VERSION_STR
+#define PWM_VERSION_DW         PwProduct::VERSION_DW
+#define PWM_VERSION_QW         PwProduct::VERSION_QW
+#define PWM_DBSIG_1            PwDbSignature::SIG1
+#define PWM_DBSIG_2            PwDbSignature::SIG2
+#define PWM_DBVER_DW           PwDbSignature::VERSION
+#define PWM_DBSIG_1_KDBX_P     PwDbSignature::SIG1_KDBX_PRE
+#define PWM_DBSIG_2_KDBX_P     PwDbSignature::SIG2_KDBX_PRE
+#define PWM_DBSIG_1_KDBX_R     PwDbSignature::SIG1_KDBX_REL
+#define PWM_DBSIG_2_KDBX_R     PwDbSignature::SIG2_KDBX_REL
+#define PWM_SESSION_KEY_SIZE   PwConstants::SESSION_KEY_SIZE
+#define PWM_STD_KEYENCROUNDS   PwConstants::STD_KEYENC_ROUNDS
+#define ALGO_AES               static_cast<int>(PwAlgorithm::AES)
+#define ALGO_TWOFISH           static_cast<int>(PwAlgorithm::TWOFISH)
+#define PWE_UNKNOWN            static_cast<int>(PwError::UNKNOWN)
+#define PWE_SUCCESS            static_cast<int>(PwError::SUCCESS)
+#define PWE_INVALID_PARAM      static_cast<int>(PwError::INVALID_PARAM)
+#define PWE_NO_MEM             static_cast<int>(PwError::NO_MEM)
+#define PWE_INVALID_KEY        static_cast<int>(PwError::INVALID_KEY)
+#define PWE_NOFILEACCESS_READ  static_cast<int>(PwError::NOFILEACCESS_READ)
+#define PWE_NOFILEACCESS_WRITE static_cast<int>(PwError::NOFILEACCESS_WRITE)
+#define PWE_FILEERROR_READ     static_cast<int>(PwError::FILEERROR_READ)
+#define PWE_FILEERROR_WRITE    static_cast<int>(PwError::FILEERROR_WRITE)
+#define PWE_INVALID_RANDOMSOURCE static_cast<int>(PwError::INVALID_RANDOMSOURCE)
+#define PWE_INVALID_FILESTRUCTURE static_cast<int>(PwError::INVALID_FILESTRUCTURE)
+#define PWE_CRYPT_ERROR        static_cast<int>(PwError::CRYPT_ERROR)
+#define PWE_INVALID_FILESIZE   static_cast<int>(PwError::INVALID_FILESIZE)
+#define PWE_INVALID_FILESIGNATURE static_cast<int>(PwError::INVALID_FILESIGNATURE)
+#define PWE_INVALID_FILEHEADER static_cast<int>(PwError::INVALID_FILEHEADER)
+#define PWE_NOFILEACCESS_READ_KEY static_cast<int>(PwError::NOFILEACCESS_READ_KEY)
+#define PWE_KEYPROV_INVALID_KEY static_cast<int>(PwError::KEYPROV_INVALID_KEY)
+#define PWE_FILEERROR_VERIFY   static_cast<int>(PwError::FILEERROR_VERIFY)
+#define PWE_UNSUPPORTED_KDBX   static_cast<int>(PwError::UNSUPPORTED_KDBX)
+#define PWE_GETLASTERROR       static_cast<int>(PwError::GETLASTERROR)
+#define PWE_DB_EMPTY           static_cast<int>(PwError::DB_EMPTY)
+#define PWE_ATTACH_TOOLARGE    static_cast<int>(PwError::ATTACH_TOOLARGE)
+#define PWMF_TITLE             PwFieldFlags::TITLE
+#define PWMF_USER              PwFieldFlags::USER
+#define PWMF_URL               PwFieldFlags::URL
+#define PWMF_PASSWORD          PwFieldFlags::PASSWORD
+#define PWMF_ADDITIONAL        PwFieldFlags::ADDITIONAL
+#define PWMF_GROUPNAME         PwFieldFlags::GROUPNAME
+#define PWMF_CREATION          PwFieldFlags::CREATION
+#define PWMF_LASTMOD           PwFieldFlags::LASTMOD
+#define PWMF_LASTACCESS        PwFieldFlags::LASTACCESS
+#define PWMF_EXPIRE            PwFieldFlags::EXPIRE
+#define PWMF_UUID              PwFieldFlags::UUID
+#define PWMS_REGEX             PwSearchFlags::REGEX
+#define PWGF_EXPANDED          PwGroupFlags::EXPANDED
+
+/**
+ * @class PwManager
+ * @brief Core database management class for KeePass KDB v1.x format
+ *
+ * This class handles all database operations including:
+ * - Opening and saving KDB v1.x files
+ * - Managing groups and entries
+ * - Master key handling and encryption
+ * - In-memory password protection
+ * - Database merging and repair
+ *
+ * Ported from MFC CPwManager to Qt.
+ *
+ * @note Migration Status:
+ * - Data types: Migrated to Qt types (quint8, quint16, quint32, QString)
+ * - Member variables: Currently use MFC-style Hungarian notation (m_pEntries, m_dwNumEntries)
+ *   TODO: Future refactoring pass will rename to KDE style (m_entries, m_numEntries)
+ * - Constants: Migrated to constexpr with legacy #define compatibility layer
+ * - File format: 100% binary compatible with MFC KeePass v1.43
+ *
+ * @warning CRITICAL: Any changes to data structures or serialization logic must
+ *          maintain byte-level compatibility with the KDB v1.x file format.
+ */
 class PwManager
 {
     Q_DISABLE_COPY(PwManager)

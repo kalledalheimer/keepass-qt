@@ -170,8 +170,7 @@
  * functions in this file. Be very careful.
  * Standard include files will probably be ok.
  */
-#include "StdAfx.h"
-// #include <string.h>     /* for memset(), memcpy(), and memcmp() */
+#include <string.h>     /* for memset(), memcpy(), and memcmp() */
 #include "twofish.h"
 
 
@@ -215,7 +214,9 @@
  * header file could easily break it. Maybe the best solution is to use
  * a separate extern statement for your fatal function.
  */
-#define Twofish_fatal(pmsgx) { MessageBox(GetDesktopWindow(), _T(pmsgx), _T("Twofish Fatal Error"), MB_OK); }
+#include <cstdlib>
+#include <cstdio>
+#define Twofish_fatal(pmsgx) { fprintf(stderr, "Twofish Fatal Error: %s\n", pmsgx); abort(); }
 
 
 /*

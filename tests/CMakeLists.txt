@@ -1,14 +1,31 @@
 # Qt-KeePass Tests
 
-# Tests will be added as the implementation progresses
-# Example structure:
-#
-# add_executable(test_crypto
-#     test_crypto.cpp
-# )
-# target_link_libraries(test_crypto
-#     PRIVATE keepass-core Qt${QT_VERSION_MAJOR}::Test
-# )
-# add_test(NAME test_crypto COMMAND test_crypto)
+# Find Qt Test module
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
 
-message(STATUS "Tests directory configured (tests to be implemented)")
+# Test: PwManager (core database functionality)
+add_executable(test_pwmanager
+    test_pwmanager.cpp
+)
+
+target_link_libraries(test_pwmanager
+    PRIVATE
+        keepass-core
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Test
+)
+
+# Enable Qt Test features
+set_target_properties(test_pwmanager PROPERTIES
+    AUTOMOC ON
+)
+
+# Register test with CTest
+add_test(NAME test_pwmanager COMMAND test_pwmanager)
+
+# Set test working directory to project root (so tests/data paths work)
+set_tests_properties(test_pwmanager PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+message(STATUS "Tests configured: test_pwmanager")
