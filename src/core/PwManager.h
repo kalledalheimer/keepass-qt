@@ -197,37 +197,37 @@ public:
                      bool bOverwrite, const QString& providerName);
 
     // Database info
-    DWORD getNumberOfEntries() const;
-    DWORD getNumberOfGroups() const;
-    DWORD getNumberOfItemsInGroup(const QString& groupName) const;
-    DWORD getNumberOfItemsInGroupN(DWORD idGroup) const;
+    quint32 getNumberOfEntries() const;
+    quint32 getNumberOfGroups() const;
+    quint32 getNumberOfItemsInGroup(const QString& groupName) const;
+    quint32 getNumberOfItemsInGroupN(quint32 idGroup) const;
 
     // Entry access
-    PW_ENTRY* getEntry(DWORD dwIndex);
-    PW_ENTRY* getEntryByGroup(DWORD idGroup, DWORD dwIndex);
-    DWORD getEntryByGroupN(DWORD idGroup, DWORD dwIndex) const;
-    PW_ENTRY* getEntryByUuid(const BYTE* pUuid);
-    DWORD getEntryByUuidN(const BYTE* pUuid) const;
-    DWORD getEntryPosInGroup(const PW_ENTRY* pEntry) const;
+    PW_ENTRY* getEntry(quint32 dwIndex);
+    PW_ENTRY* getEntryByGroup(quint32 idGroup, quint32 dwIndex);
+    quint32 getEntryByGroupN(quint32 idGroup, quint32 dwIndex) const;
+    PW_ENTRY* getEntryByUuid(const quint8* pUuid);
+    quint32 getEntryByUuidN(const quint8* pUuid) const;
+    quint32 getEntryPosInGroup(const PW_ENTRY* pEntry) const;
     PW_ENTRY* getLastEditedEntry();
 
     // Group access
-    PW_GROUP* getGroup(DWORD dwIndex);
-    PW_GROUP* getGroupById(DWORD idGroup);
-    DWORD getGroupByIdN(DWORD idGroup) const;
-    DWORD getGroupId(const QString& groupName) const;
-    DWORD getGroupIdByIndex(DWORD uGroupIndex) const;
-    DWORD getLastChildGroup(DWORD dwParentGroupIndex) const;
-    bool getGroupTree(DWORD idGroup, DWORD* pGroupIndexes) const;
+    PW_GROUP* getGroup(quint32 dwIndex);
+    PW_GROUP* getGroupById(quint32 idGroup);
+    quint32 getGroupByIdN(quint32 idGroup) const;
+    quint32 getGroupId(const QString& groupName) const;
+    quint32 getGroupIdByIndex(quint32 uGroupIndex) const;
+    quint32 getLastChildGroup(quint32 dwParentGroupIndex) const;
+    bool getGroupTree(quint32 idGroup, quint32* pGroupIndexes) const;
 
     // Add/modify/delete
     bool addGroup(const PW_GROUP* pTemplate);
     bool addEntry(const PW_ENTRY* pTemplate);
     bool backupEntry(const PW_ENTRY* pe, bool* pbGroupCreated = nullptr);
-    bool deleteEntry(DWORD dwIndex);
-    bool deleteGroupById(DWORD uGroupId, bool bCreateBackupEntries);
-    bool setGroup(DWORD dwIndex, const PW_GROUP* pTemplate);
-    bool setEntry(DWORD dwIndex, const PW_ENTRY* pTemplate);
+    bool deleteEntry(quint32 dwIndex);
+    bool deleteGroupById(quint32 uGroupId, bool bCreateBackupEntries);
+    bool setGroup(quint32 dwIndex, const PW_GROUP* pTemplate);
+    bool setEntry(quint32 dwIndex, const PW_ENTRY* pTemplate);
 
     // Password encryption/decryption in memory
     void lockEntryPassword(PW_ENTRY* pEntry);
@@ -236,48 +236,48 @@ public:
     // Database operations
     void newDatabase();
     int openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair = nullptr);
-    int saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32 = nullptr);
+    int saveDatabase(const QString& filePath, quint8* pWrittenDataHash32 = nullptr);
 
     // Move operations
-    void moveEntry(DWORD idGroup, DWORD dwFrom, DWORD dwTo);
-    bool moveGroup(DWORD dwFrom, DWORD dwTo);
-    bool moveGroupEx(DWORD dwFromId, DWORD dwToId);
-    bool moveGroupExDir(DWORD dwGroupId, int iDirection);
+    void moveEntry(quint32 idGroup, quint32 dwFrom, quint32 dwTo);
+    bool moveGroup(quint32 dwFrom, quint32 dwTo);
+    bool moveGroupEx(quint32 dwFromId, quint32 dwToId);
+    bool moveGroupExDir(quint32 dwGroupId, int iDirection);
 
     // Sort operations
-    void sortGroup(DWORD idGroup, DWORD dwSortByField);
+    void sortGroup(quint32 idGroup, quint32 dwSortByField);
     void sortGroupList();
 
     // Merge databases
     void mergeIn(PwManager* pDataSource, bool bCreateNewUUIDs, bool bCompareTimes);
 
     // Find operations
-    DWORD find(const QString& findString, bool bCaseSensitive, DWORD searchFlags,
-               DWORD nStart, DWORD nEndExcl, QString* pError = nullptr);
-    DWORD findEx(const QString& findString, bool bCaseSensitive, DWORD searchFlags,
-                 DWORD nStart, QString* pError = nullptr);
+    quint32 find(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
+                 quint32 nStart, quint32 nEndExcl, QString* pError = nullptr);
+    quint32 findEx(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
+                   quint32 nStart, QString* pError = nullptr);
 
     // Encryption settings
     int getAlgorithm() const;
     bool setAlgorithm(int nAlgorithm);
-    DWORD getKeyEncRounds() const;
-    void setKeyEncRounds(DWORD dwRounds);
+    quint32 getKeyEncRounds() const;
+    void setKeyEncRounds(quint32 dwRounds);
 
     // Group tree management
     void fixGroupTree();
-    void substEntryGroupIds(DWORD dwExistingId, DWORD dwNewId);
+    void substEntryGroupIds(quint32 dwExistingId, quint32 dwNewId);
 
     // Database header and keys
     const PW_DBHEADER* getLastDatabaseHeader() const;
-    void getRawMasterKey(BYTE* pStorage);
-    void setRawMasterKey(const BYTE* pNewKey);
+    void getRawMasterKey(quint8* pStorage);
+    void setRawMasterKey(const quint8* pNewKey);
     void clearMasterKey(bool bClearKey, bool bClearTransformedKey);
     QString getKeySource() const;
 
     // Properties and custom data
-    QString getPropertyString(DWORD dwPropertyId) const;
-    bool setPropertyString(DWORD dwPropertyId, const QString& value);
-    QVector<QString>* accessPropertyStrArray(DWORD dwPropertyId);
+    QString getPropertyString(quint32 dwPropertyId) const;
+    bool setPropertyString(quint32 dwPropertyId, const QString& value);
+    QVector<QString>* accessPropertyStrArray(quint32 dwPropertyId);
     bool setCustomKvp(const QString& key, const QString& value);
     QString getCustomKvp(const QString& key) const;
 
@@ -287,45 +287,45 @@ public:
     void setColor(const QColor& clr);
 
     // UI state (public for direct access like MFC version)
-    DWORD m_dwLastSelectedGroupId;
-    DWORD m_dwLastTopVisibleGroupId;
-    BYTE m_aLastSelectedEntryUuid[16];
-    BYTE m_aLastTopVisibleEntryUuid[16];
+    quint32 m_dwLastSelectedGroupId;
+    quint32 m_dwLastTopVisibleGroupId;
+    quint8 m_aLastSelectedEntryUuid[16];
+    quint8 m_aLastTopVisibleEntryUuid[16];
 
 private:
     void cleanUp();
     void detMetaInfo();
 
-    void allocEntries(DWORD uEntries);
+    void allocEntries(quint32 uEntries);
     void deleteEntryList(bool bFreeStrings);
-    void allocGroups(DWORD uGroups);
+    void allocGroups(quint32 uGroups);
     void deleteGroupList(bool bFreeStrings);
 
-    bool readGroupField(USHORT usFieldType, DWORD dwFieldSize,
-                       const BYTE* pData, PW_GROUP* pGroup, PWDB_REPAIR_INFO* pRepair);
-    bool readEntryField(USHORT usFieldType, DWORD dwFieldSize,
-                       const BYTE* pData, PW_ENTRY* pEntry, PWDB_REPAIR_INFO* pRepair);
-    bool readExtData(const BYTE* pData, DWORD dwDataSize, PW_GROUP* pg,
+    bool readGroupField(quint16 usFieldType, quint32 dwFieldSize,
+                       const quint8* pData, PW_GROUP* pGroup, PWDB_REPAIR_INFO* pRepair);
+    bool readEntryField(quint16 usFieldType, quint32 dwFieldSize,
+                       const quint8* pData, PW_ENTRY* pEntry, PWDB_REPAIR_INFO* pRepair);
+    bool readExtData(const quint8* pData, quint32 dwDataSize, PW_GROUP* pg,
                     PW_ENTRY* pe, PWDB_REPAIR_INFO* pRepair);
     void writeExtData(QByteArray& data);
-    static void writeExtDataField(QByteArray& data, USHORT usFieldType,
-                                  const BYTE* pData, DWORD dwFieldSize);
+    static void writeExtDataField(QByteArray& data, quint16 usFieldType,
+                                  const quint8* pData, quint32 dwFieldSize);
 
     bool addAllMetaStreams();
-    DWORD loadAndRemoveAllMetaStreams(bool bAcceptUnknown);
-    bool addMetaStream(const QString& metaDataDesc, BYTE* pData, DWORD dwLength);
+    quint32 loadAndRemoveAllMetaStreams(bool bAcceptUnknown);
+    bool addMetaStream(const QString& metaDataDesc, quint8* pData, quint32 dwLength);
     bool isMetaStream(const PW_ENTRY* p) const;
     void parseMetaStream(PW_ENTRY* p, bool bAcceptUnknown);
     bool canIgnoreUnknownMetaStream(const PwMetaStream& msUnknown) const;
 
-    bool transformMasterKey(const BYTE* pKeySeed);
-    static void hashHeaderWithoutContentHash(const BYTE* pbHeader, QByteArray& vHash);
+    bool transformMasterKey(const quint8* pKeySeed);
+    static void hashHeaderWithoutContentHash(const quint8* pbHeader, QByteArray& vHash);
 
-    DWORD deleteLostEntries();
-    void moveInternal(DWORD dwFrom, DWORD dwTo);
+    quint32 deleteLostEntries();
+    void moveInternal(quint32 dwFrom, quint32 dwTo);
 
     static QByteArray serializeCustomKvp(const CustomKvp& kvp);
-    static bool deserializeCustomKvp(const BYTE* pStream, CustomKvp& kvpBuffer);
+    static bool deserializeCustomKvp(const quint8* pStream, CustomKvp& kvpBuffer);
 
     void protectMasterKey(bool bProtectKey);
     void protectTransformedMasterKey(bool bProtectKey);

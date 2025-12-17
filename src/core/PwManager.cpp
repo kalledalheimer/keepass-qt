@@ -183,12 +183,12 @@ void PwManager::deleteGroupList(bool bFreeStrings)
     m_numGroups = 0;
 }
 
-DWORD PwManager::getNumberOfEntries() const
+quint32 PwManager::getNumberOfEntries() const
 {
     return m_numEntries;
 }
 
-DWORD PwManager::getNumberOfGroups() const
+quint32 PwManager::getNumberOfGroups() const
 {
     return m_numGroups;
 }
@@ -323,7 +323,7 @@ bool PwManager::setAlgorithm(int nAlgorithm)
     return true;
 }
 
-DWORD PwManager::getKeyEncRounds() const
+quint32 PwManager::getKeyEncRounds() const
 {
     return m_keyEncRounds;
 }
@@ -353,7 +353,7 @@ void PwManager::setColor(const QColor& clr)
     m_clr = clr;
 }
 
-bool PwManager::transformMasterKey(const BYTE* pKeySeed)
+bool PwManager::transformMasterKey(const quint8* pKeySeed)
 {
     if (!pKeySeed)
         return false;
@@ -746,7 +746,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     return PWE_SUCCESS;
 }
 
-int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
+int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
 {
     // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:373-780
 
@@ -1219,8 +1219,8 @@ void PwManager::writeExtData(QByteArray& data)
     writeExtDataField(data, 0xFFFF, nullptr, 0);
 }
 
-void PwManager::writeExtDataField(QByteArray& data, USHORT usFieldType,
-                                  const BYTE* pData, DWORD dwFieldSize)
+void PwManager::writeExtDataField(QByteArray& data, quint16 usFieldType,
+                                  const quint8* pData, quint32 dwFieldSize)
 {
     // Append field type (2 bytes)
     data.append(reinterpret_cast<const char*>(&usFieldType), 2);
@@ -1302,7 +1302,7 @@ bool PwManager::addAllMetaStreams()
     return success;
 }
 
-bool PwManager::addMetaStream(const QString& metaDataDesc, BYTE* pData, DWORD dwLength)
+bool PwManager::addMetaStream(const QString& metaDataDesc, quint8* pData, quint32 dwLength)
 {
     // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:1595-1616
     // Meta-streams are special entries with fixed field values that store metadata
@@ -1398,13 +1398,13 @@ QByteArray PwManager::serializeCustomKvp(const CustomKvp& kvp)
 // These will be implemented as needed
 //=============================================================================
 
-DWORD PwManager::getNumberOfItemsInGroup(const QString& groupName) const
+quint32 PwManager::getNumberOfItemsInGroup(const QString& groupName) const
 {
     Q_UNUSED(groupName);
     return 0;
 }
 
-DWORD PwManager::getNumberOfItemsInGroupN(DWORD idGroup) const
+quint32 PwManager::getNumberOfItemsInGroupN(DWORD idGroup) const
 {
     DWORD count = 0;
     for (DWORD i = 0; i < m_numEntries; ++i) {
@@ -1414,7 +1414,7 @@ DWORD PwManager::getNumberOfItemsInGroupN(DWORD idGroup) const
     return count;
 }
 
-PW_ENTRY* PwManager::getEntryByUuid(const BYTE* pUuid)
+PW_ENTRY* PwManager::getEntryByUuid(const quint8* pUuid)
 {
     if (!pUuid)
         return nullptr;
@@ -1437,7 +1437,7 @@ PW_GROUP* PwManager::getGroupById(DWORD idGroup)
     return nullptr;
 }
 
-DWORD PwManager::getGroupByIdN(DWORD idGroup) const
+quint32 PwManager::getGroupByIdN(DWORD idGroup) const
 {
     for (DWORD i = 0; i < m_numGroups; ++i) {
         if (m_pGroups[i].uGroupId == idGroup)
@@ -1770,8 +1770,8 @@ static TCHAR* utf8ToString(const BYTE* pUTF8String)
     return result;
 }
 
-bool PwManager::readGroupField(USHORT usFieldType, DWORD dwFieldSize,
-                                const BYTE* pData, PW_GROUP* pGroup, PWDB_REPAIR_INFO* pRepair)
+bool PwManager::readGroupField(quint16 usFieldType, quint32 dwFieldSize,
+                                const quint8* pData, PW_GROUP* pGroup, PWDB_REPAIR_INFO* pRepair)
 {
     // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:788-850
 
@@ -1859,8 +1859,8 @@ bool PwManager::readGroupField(USHORT usFieldType, DWORD dwFieldSize,
     return true;
 }
 
-bool PwManager::readEntryField(USHORT usFieldType, DWORD dwFieldSize,
-                                const BYTE* pData, PW_ENTRY* pEntry, PWDB_REPAIR_INFO* pRepair)
+bool PwManager::readEntryField(quint16 usFieldType, quint32 dwFieldSize,
+                                const quint8* pData, PW_ENTRY* pEntry, PWDB_REPAIR_INFO* pRepair)
 {
     // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:852-950
 
@@ -2005,7 +2005,7 @@ bool PwManager::readEntryField(USHORT usFieldType, DWORD dwFieldSize,
     return true;
 }
 
-bool PwManager::readExtData(const BYTE* pData, DWORD dwDataSize, PW_GROUP* pg,
+bool PwManager::readExtData(const quint8* pData, quint32 dwDataSize, PW_GROUP* pg,
                              PW_ENTRY* pe, PWDB_REPAIR_INFO* pRepair)
 {
     // Reference: Extended data reading - for future implementation
@@ -2019,7 +2019,7 @@ bool PwManager::readExtData(const BYTE* pData, DWORD dwDataSize, PW_GROUP* pg,
     return true; // Silently ignore extended data for now
 }
 
-void PwManager::hashHeaderWithoutContentHash(const BYTE* pbHeader, QByteArray& vHash)
+void PwManager::hashHeaderWithoutContentHash(const quint8* pbHeader, QByteArray& vHash)
 {
     // Hash header excluding the content hash field (bytes 56-87)
     // Reference: MFC version hashes header without content hash for verification
@@ -2031,7 +2031,7 @@ void PwManager::hashHeaderWithoutContentHash(const BYTE* pbHeader, QByteArray& v
     vHash = SHA256::hash(combined);
 }
 
-DWORD PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
+quint32 PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
 {
     // Reference: Meta-streams are special entries that store KeePass metadata
     // like custom icons, UI state, search history, etc.
@@ -2084,7 +2084,7 @@ DWORD PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
     return dwRemoved;
 }
 
-DWORD PwManager::deleteLostEntries()
+quint32 PwManager::deleteLostEntries()
 {
     // Delete entries that reference non-existent groups
     // Reference: MFC version removes orphaned entries
