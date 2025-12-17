@@ -394,7 +394,7 @@ void TestPwManager::testPasswordEncryption()
     // Add entry with password
     PW_ENTRY entry;
     std::memset(&entry, 0, sizeof(PW_ENTRY));
-    entry.uGroupId = 0;
+    entry.uGroupId = 1;  // Must be non-zero and not DWORD_MAX
     entry.uImageId = 0;
 
     QString password = "SecretPassword123!";
@@ -428,17 +428,23 @@ void TestPwManager::testPasswordEncryption()
     PW_ENTRY* storedEntry = mgr->getEntry(0);
     QVERIFY(storedEntry != nullptr);
 
-    // Password should be encrypted in memory (XOR with session key)
+    // Password is already locked by setEntry(), so it should be encrypted
+    // We need to unlock it first to see the original
+    mgr->unlockEntryPassword(storedEntry);
+    QString decryptedPassword(storedEntry->pszPassword);
+    QCOMPARE(decryptedPassword, password);
+
+    // Now lock it again
     mgr->lockEntryPassword(storedEntry);
 
     // Encrypted password should differ from original
     QString encryptedPassword(storedEntry->pszPassword);
     QVERIFY(encryptedPassword != password);
 
-    // Unlock should restore original
+    // Unlock again should restore original
     mgr->unlockEntryPassword(storedEntry);
-    QString decryptedPassword(storedEntry->pszPassword);
-    QCOMPARE(decryptedPassword, password);
+    QString decryptedPassword2(storedEntry->pszPassword);
+    QCOMPARE(decryptedPassword2, password);
 
     // Cleanup
     delete[] entry.pszTitle;

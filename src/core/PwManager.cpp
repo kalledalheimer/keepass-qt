@@ -28,6 +28,7 @@
 namespace {
     constexpr quint32 INITIAL_ENTRIES = 256;
     constexpr quint32 INITIAL_GROUPS = 32;
+    constexpr DWORD DWORD_MAX = 0xFFFFFFFF;  // Maximum value for DWORD (quint32)
 }
 
 PwManager::PwManager()
@@ -818,16 +819,272 @@ PW_ENTRY* PwManager::getLastEditedEntry()
 
 bool PwManager::addGroup(const PW_GROUP* pTemplate)
 {
-    Q_UNUSED(pTemplate);
-    // TODO: Implement
-    return false;
+    Q_ASSERT(pTemplate != nullptr);
+    if (pTemplate == nullptr) {
+        return false;
+    }
+
+    // Copy template to local variable
+    PW_GROUP groupCopy = *pTemplate;
+
+    // Generate a new unique group ID if needed
+    if (groupCopy.uGroupId == 0 || groupCopy.uGroupId == DWORD_MAX) {
+        DWORD newId = 0;
+        while (true) {
+            Random::fillBuffer(reinterpret_cast<BYTE*>(&newId), sizeof(DWORD));
+            if (newId == 0 || newId == DWORD_MAX) {
+                continue;
+            }
+
+            // Check if this ID already exists
+            bool exists = false;
+            for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+                if (m_pGroups[i].uGroupId == newId) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                break;
+            }
+        }
+        groupCopy.uGroupId = newId;
+    }
+
+    // Expand array if needed
+    if (m_dwNumGroups == m_dwMaxGroups) {
+        DWORD newMax = m_dwMaxGroups + 8;
+        PW_GROUP* newGroups = new PW_GROUP[newMax];
+        std::memset(newGroups, 0, newMax * sizeof(PW_GROUP));
+
+        // Copy existing groups
+        if (m_pGroups != nullptr) {
+            std::memcpy(newGroups, m_pGroups, m_dwNumGroups * sizeof(PW_GROUP));
+            delete[] m_pGroups;
+        }
+
+        m_pGroups = newGroups;
+        m_dwMaxGroups = newMax;
+    }
+
+    ++m_dwNumGroups;
+    return setGroup(m_dwNumGroups - 1, &groupCopy);
+}
+
+bool PwManager::setGroup(DWORD dwIndex, const PW_GROUP* pTemplate)
+{
+    Q_ASSERT(dwIndex < m_dwNumGroups);
+    Q_ASSERT(pTemplate != nullptr);
+    Q_ASSERT(pTemplate->uGroupId != 0 && pTemplate->uGroupId != DWORD_MAX);
+
+    if (dwIndex >= m_dwNumGroups || pTemplate == nullptr) {
+        return false;
+    }
+
+    if (pTemplate->uGroupId == 0 || pTemplate->uGroupId == DWORD_MAX) {
+        return false;
+    }
+
+    // Free old group name
+    delete[] m_pGroups[dwIndex].pszGroupName;
+
+    // Allocate and copy new group name
+    if (pTemplate->pszGroupName) {
+        size_t len = std::strlen(pTemplate->pszGroupName);
+        m_pGroups[dwIndex].pszGroupName = new char[len + 1];
+        std::strcpy(m_pGroups[dwIndex].pszGroupName, pTemplate->pszGroupName);
+    } else {
+        m_pGroups[dwIndex].pszGroupName = new char[1];
+        m_pGroups[dwIndex].pszGroupName[0] = '\0';
+    }
+
+    // Copy all fields
+    m_pGroups[dwIndex].uGroupId = pTemplate->uGroupId;
+    m_pGroups[dwIndex].uImageId = pTemplate->uImageId;
+    m_pGroups[dwIndex].usLevel = pTemplate->usLevel;
+    m_pGroups[dwIndex].dwFlags = pTemplate->dwFlags;
+
+    m_pGroups[dwIndex].tCreation = pTemplate->tCreation;
+    m_pGroups[dwIndex].tLastMod = pTemplate->tLastMod;
+    m_pGroups[dwIndex].tLastAccess = pTemplate->tLastAccess;
+    m_pGroups[dwIndex].tExpire = pTemplate->tExpire;
+
+    return true;
+}
+
+bool PwManager::setEntry(DWORD dwIndex, const PW_ENTRY* pTemplate)
+{
+    Q_ASSERT(dwIndex < m_dwNumEntries);
+    Q_ASSERT(pTemplate != nullptr);
+    Q_ASSERT(pTemplate->uGroupId != 0 && pTemplate->uGroupId != DWORD_MAX);
+
+    if (dwIndex >= m_dwNumEntries || pTemplate == nullptr) {
+        return false;
+    }
+
+    if (pTemplate->uGroupId == 0 || pTemplate->uGroupId == DWORD_MAX) {
+        return false;
+    }
+
+    // Validate required fields
+    if (pTemplate->pszTitle == nullptr || pTemplate->pszUserName == nullptr ||
+        pTemplate->pszURL == nullptr || pTemplate->pszPassword == nullptr ||
+        pTemplate->pszAdditional == nullptr) {
+        return false;
+    }
+
+    PW_ENTRY* entry = &m_pEntries[dwIndex];
+
+    // Copy UUID
+    std::memcpy(entry->uuid, pTemplate->uuid, 16);
+    entry->uGroupId = pTemplate->uGroupId;
+    entry->uImageId = pTemplate->uImageId;
+
+    // Free and allocate title
+    delete[] entry->pszTitle;
+    size_t len = std::strlen(pTemplate->pszTitle);
+    entry->pszTitle = new char[len + 1];
+    std::strcpy(entry->pszTitle, pTemplate->pszTitle);
+
+    // Free and allocate username
+    delete[] entry->pszUserName;
+    len = std::strlen(pTemplate->pszUserName);
+    entry->pszUserName = new char[len + 1];
+    std::strcpy(entry->pszUserName, pTemplate->pszUserName);
+
+    // Free and allocate URL
+    delete[] entry->pszURL;
+    len = std::strlen(pTemplate->pszURL);
+    entry->pszURL = new char[len + 1];
+    std::strcpy(entry->pszURL, pTemplate->pszURL);
+
+    // Free and allocate password
+    delete[] entry->pszPassword;
+    len = std::strlen(pTemplate->pszPassword);
+    entry->pszPassword = new char[len + 1];
+    std::strcpy(entry->pszPassword, pTemplate->pszPassword);
+
+    // Free and allocate additional
+    delete[] entry->pszAdditional;
+    len = std::strlen(pTemplate->pszAdditional);
+    entry->pszAdditional = new char[len + 1];
+    std::strcpy(entry->pszAdditional, pTemplate->pszAdditional);
+
+    // Handle binary data (only if different from current)
+    if (!((entry->pBinaryData == pTemplate->pBinaryData) &&
+          (entry->pszBinaryDesc == pTemplate->pszBinaryDesc))) {
+
+        // Free old binary desc
+        delete[] entry->pszBinaryDesc;
+        if (pTemplate->pszBinaryDesc) {
+            len = std::strlen(pTemplate->pszBinaryDesc);
+            entry->pszBinaryDesc = new char[len + 1];
+            std::strcpy(entry->pszBinaryDesc, pTemplate->pszBinaryDesc);
+        } else {
+            entry->pszBinaryDesc = new char[1];
+            entry->pszBinaryDesc[0] = '\0';
+        }
+
+        // Free old binary data
+        delete[] entry->pBinaryData;
+        if (pTemplate->pBinaryData && pTemplate->uBinaryDataLen > 0) {
+            entry->pBinaryData = new BYTE[pTemplate->uBinaryDataLen];
+            std::memcpy(entry->pBinaryData, pTemplate->pBinaryData, pTemplate->uBinaryDataLen);
+            entry->uBinaryDataLen = pTemplate->uBinaryDataLen;
+        } else {
+            entry->pBinaryData = nullptr;
+            entry->uBinaryDataLen = 0;
+        }
+    }
+
+    // Update password length and lock it
+    entry->uPasswordLen = static_cast<DWORD>(std::strlen(entry->pszPassword));
+    lockEntryPassword(entry);
+
+    // Copy timestamps
+    entry->tCreation = pTemplate->tCreation;
+    entry->tLastMod = pTemplate->tLastMod;
+    entry->tLastAccess = pTemplate->tLastAccess;
+    entry->tExpire = pTemplate->tExpire;
+
+    // Ensure binary desc is never null
+    if (entry->pszBinaryDesc == nullptr) {
+        entry->pszBinaryDesc = new char[1];
+        entry->pszBinaryDesc[0] = '\0';
+    }
+
+    m_pLastEditedEntry = entry;
+    return true;
 }
 
 bool PwManager::addEntry(const PW_ENTRY* pTemplate)
 {
-    Q_UNUSED(pTemplate);
-    // TODO: Implement
-    return false;
+    Q_ASSERT(pTemplate != nullptr);
+    if (pTemplate == nullptr) {
+        return false;
+    }
+
+    Q_ASSERT(pTemplate->uGroupId != 0 && pTemplate->uGroupId != DWORD_MAX);
+    if (pTemplate->uGroupId == 0 || pTemplate->uGroupId == DWORD_MAX) {
+        return false;
+    }
+
+    // Expand array if needed
+    if (m_dwNumEntries == m_dwMaxEntries) {
+        DWORD newMax = m_dwMaxEntries + 32;
+        PW_ENTRY* newEntries = new PW_ENTRY[newMax];
+        std::memset(newEntries, 0, newMax * sizeof(PW_ENTRY));
+
+        // Copy existing entries
+        if (m_pEntries != nullptr) {
+            std::memcpy(newEntries, m_pEntries, m_dwNumEntries * sizeof(PW_ENTRY));
+            delete[] m_pEntries;
+        }
+
+        m_pEntries = newEntries;
+        m_dwMaxEntries = newMax;
+    }
+
+    // Copy template to local variable
+    PW_ENTRY entryCopy = *pTemplate;
+
+    // Generate UUID if it's all zeros
+    bool isZeroUuid = true;
+    for (int i = 0; i < 16; ++i) {
+        if (entryCopy.uuid[i] != 0) {
+            isZeroUuid = false;
+            break;
+        }
+    }
+
+    if (isZeroUuid) {
+        Random::fillBuffer(entryCopy.uuid, 16);
+    }
+
+    // Map nullptr pointers to empty strings
+    static const char emptyString[] = "";
+    if (entryCopy.pszTitle == nullptr) {
+        entryCopy.pszTitle = const_cast<char*>(emptyString);
+    }
+    if (entryCopy.pszUserName == nullptr) {
+        entryCopy.pszUserName = const_cast<char*>(emptyString);
+    }
+    if (entryCopy.pszURL == nullptr) {
+        entryCopy.pszURL = const_cast<char*>(emptyString);
+    }
+    if (entryCopy.pszPassword == nullptr) {
+        entryCopy.pszPassword = const_cast<char*>(emptyString);
+    }
+    if (entryCopy.pszAdditional == nullptr) {
+        entryCopy.pszAdditional = const_cast<char*>(emptyString);
+    }
+    if (entryCopy.pszBinaryDesc == nullptr) {
+        entryCopy.pszBinaryDesc = const_cast<char*>(emptyString);
+    }
+
+    ++m_dwNumEntries;
+    return setEntry(m_dwNumEntries - 1, &entryCopy);
 }
 
 bool PwManager::deleteEntry(DWORD dwIndex)
