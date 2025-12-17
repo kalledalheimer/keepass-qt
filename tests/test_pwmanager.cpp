@@ -245,12 +245,26 @@ void TestPwManager::testSaveAndOpenEmptyDatabase()
     // Remove old test file if it exists
     QFile::remove(testFile);
 
-    // Create and save an empty database
+    // Create and save a database with one empty group (minimal valid database)
     PwManager* mgr1 = createTestManager();
     mgr1->newDatabase();
 
     QString masterPassword = "TestPassword123!";
     mgr1->setMasterKey(masterPassword, false, QString(), false, QString());
+
+    // Add a default group (KeePass databases require at least one group)
+    PW_GROUP group;
+    std::memset(&group, 0, sizeof(PW_GROUP));
+    group.uGroupId = 1;
+    group.pszGroupName = new char[8];
+    std::strcpy(group.pszGroupName, "General");
+    group.uImageId = 1;
+    PwManager::getNeverExpireTime(&group.tExpire);
+    PwManager::getNeverExpireTime(&group.tCreation);
+    PwManager::getNeverExpireTime(&group.tLastMod);
+    PwManager::getNeverExpireTime(&group.tLastAccess);
+    mgr1->addGroup(&group);
+    delete[] group.pszGroupName;
 
     int saveResult = mgr1->saveDatabase(testFile);
     QCOMPARE(saveResult, PWE_SUCCESS);
@@ -267,8 +281,8 @@ void TestPwManager::testSaveAndOpenEmptyDatabase()
     int openResult = mgr2->openDatabase(testFile);
     QCOMPARE(openResult, PWE_SUCCESS);
 
-    // Verify empty database
-    verifyDatabaseIntegrity(mgr2, 0, 0);
+    // Verify database has one group, no entries
+    verifyDatabaseIntegrity(mgr2, 1, 0);
 
     delete mgr2;
     QFile::remove(testFile);

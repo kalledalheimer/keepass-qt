@@ -750,18 +750,658 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
 
 int PwManager::saveDatabase(const QString& filePath, BYTE* pWrittenDataHash32)
 {
-    // TODO: Implement full database saving
-    // This is the most critical function for KDB compatibility
-    // Will be implemented in next iteration
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:373-780
 
-    Q_UNUSED(filePath);
-    Q_UNUSED(pWrittenDataHash32);
+    Q_ASSERT(!filePath.isEmpty());
+    if (filePath.isEmpty()) {
+        return PWE_INVALID_PARAM;
+    }
 
-    return PWE_FILEERROR_WRITE; // Placeholder
+    if (m_dwNumGroups == 0) {
+        return PWE_DB_EMPTY;
+    }
+
+    // Add all meta-streams (UI state, etc.)
+    addAllMetaStreams();
+
+    //========================================================================
+    // STEP 1: Calculate required file size
+    //========================================================================
+
+    quint64 fileSize = sizeof(PW_DBHEADER);
+
+    // Extended data size (for first group)
+    QByteArray extData;
+    writeExtData(extData);
+    fileSize += 2 + 4 + extData.size();  // field type + field size + data
+
+    // Calculate size of all groups
+    for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+        fileSize += 94;  // Fixed overhead for group fields
+
+        // Group name (UTF-8)
+        QString groupName = QString::fromUtf8(m_pGroups[i].pszGroupName);
+        QByteArray nameUtf8 = groupName.toUtf8();
+        fileSize += nameUtf8.length() + 1;  // +1 for null terminator
+    }
+
+    // Calculate size of all entries
+    for (DWORD i = 0; i < m_dwNumEntries; ++i) {
+        PW_ENTRY* entry = &m_pEntries[i];
+
+        // Unlock password temporarily for serialization
+        unlockEntryPassword(entry);
+
+        fileSize += 134;  // Fixed overhead for entry fields
+
+        // All string fields (UTF-8)
+        QString title = QString::fromUtf8(entry->pszTitle);
+        QString username = QString::fromUtf8(entry->pszUserName);
+        QString url = QString::fromUtf8(entry->pszURL);
+        QString password = QString::fromUtf8(entry->pszPassword);
+        QString notes = QString::fromUtf8(entry->pszAdditional);
+        QString binaryDesc = QString::fromUtf8(entry->pszBinaryDesc);
+
+        fileSize += title.toUtf8().length() + 1;
+        fileSize += username.toUtf8().length() + 1;
+        fileSize += url.toUtf8().length() + 1;
+        fileSize += password.toUtf8().length() + 1;
+        fileSize += notes.toUtf8().length() + 1;
+        fileSize += binaryDesc.toUtf8().length() + 1;
+        fileSize += entry->uBinaryDataLen;
+
+        // Lock password again
+        lockEntryPassword(entry);
+    }
+
+    // Round up to 16-byte boundary for block cipher
+    fileSize = (fileSize + 16) - (fileSize % 16);
+
+    quint64 allocSize = fileSize + 16;
+    if (allocSize > 0xFFFFFFFFULL) {
+        loadAndRemoveAllMetaStreams(false);
+        return PWE_NO_MEM;
+    }
+
+    //========================================================================
+    // STEP 2: Allocate memory buffer
+    //========================================================================
+
+    DWORD bufferSize = static_cast<DWORD>(allocSize);
+    char* buffer = nullptr;
+    try {
+        buffer = new char[bufferSize];
+        std::memset(buffer, 0, bufferSize);
+    } catch (...) {
+        loadAndRemoveAllMetaStreams(false);
+        return PWE_NO_MEM;
+    }
+
+    //========================================================================
+    // STEP 3: Build header structure
+    //========================================================================
+
+    PW_DBHEADER hdr;
+    std::memset(&hdr, 0, sizeof(PW_DBHEADER));
+
+    hdr.dwSignature1 = PWM_DBSIG_1;
+    hdr.dwSignature2 = PWM_DBSIG_2;
+    hdr.dwFlags = 0x04;  // PWM_FLAG_SHA2
+
+    if (m_nAlgorithm == ALGO_AES) {
+        hdr.dwFlags |= 0x02;  // PWM_FLAG_RIJNDAEL
+    } else if (m_nAlgorithm == ALGO_TWOFISH) {
+        hdr.dwFlags |= 0x08;  // PWM_FLAG_TWOFISH
+    } else {
+        delete[] buffer;
+        loadAndRemoveAllMetaStreams(false);
+        return PWE_INVALID_PARAM;
+    }
+
+    hdr.dwVersion = PWM_DBVER_DW;
+    hdr.dwGroups = m_dwNumGroups;
+    hdr.dwEntries = m_dwNumEntries;
+    hdr.dwKeyEncRounds = m_dwKeyEncRounds;
+
+    // Generate random seeds and IV
+    Random::fillBuffer(hdr.aMasterSeed, 16);
+    Random::fillBuffer(hdr.aEncryptionIV, 16);
+    Random::fillBuffer(hdr.aMasterSeed2, 32);
+
+    // Hash header (without content hash field)
+    m_vHeaderHash.resize(32);
+    hashHeaderWithoutContentHash(reinterpret_cast<BYTE*>(&hdr), m_vHeaderHash);
+
+    //========================================================================
+    // STEP 4: Serialize groups
+    //========================================================================
+
+    DWORD pos = sizeof(PW_DBHEADER);  // Skip header for now
+
+    for (DWORD i = 0; i < m_dwNumGroups; ++i) {
+        // First group gets extended data
+        if (i == 0) {
+            USHORT fieldType = 0x0000;
+            DWORD fieldSize = static_cast<DWORD>(extData.size());
+            std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+            std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+            std::memcpy(&buffer[pos], extData.constData(), fieldSize); pos += fieldSize;
+        }
+
+        // Field 0x0001: Group ID
+        USHORT fieldType = 0x0001;
+        DWORD fieldSize = 4;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], &m_pGroups[i].uGroupId, 4); pos += 4;
+
+        // Field 0x0002: Group name
+        QString groupName = QString::fromUtf8(m_pGroups[i].pszGroupName);
+        QByteArray nameUtf8 = groupName.toUtf8();
+        fieldType = 0x0002;
+        fieldSize = nameUtf8.length() + 1;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::strcpy(&buffer[pos], nameUtf8.constData()); pos += fieldSize;
+
+        // Field 0x0003: Creation time
+        BYTE compressedTime[5];
+        PwUtil::packTime(&m_pGroups[i].tCreation, compressedTime);
+        fieldType = 0x0003; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x0004: Last modification time
+        PwUtil::packTime(&m_pGroups[i].tLastMod, compressedTime);
+        fieldType = 0x0004; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x0005: Last access time
+        PwUtil::packTime(&m_pGroups[i].tLastAccess, compressedTime);
+        fieldType = 0x0005; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x0006: Expiration time
+        PwUtil::packTime(&m_pGroups[i].tExpire, compressedTime);
+        fieldType = 0x0006; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x0007: Image ID
+        fieldType = 0x0007; fieldSize = 4;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], &m_pGroups[i].uImageId, 4); pos += 4;
+
+        // Field 0x0008: Level
+        fieldType = 0x0008; fieldSize = 2;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], &m_pGroups[i].usLevel, 2); pos += 2;
+
+        // Field 0x0009: Flags
+        fieldType = 0x0009; fieldSize = 4;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], &m_pGroups[i].dwFlags, 4); pos += 4;
+
+        // Field 0xFFFF: End of group
+        fieldType = 0xFFFF; fieldSize = 0;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+    }
+
+    //========================================================================
+    // STEP 5: Serialize entries
+    //========================================================================
+
+    for (DWORD i = 0; i < m_dwNumEntries; ++i) {
+        PW_ENTRY* entry = &m_pEntries[i];
+
+        // Unlock password for serialization
+        unlockEntryPassword(entry);
+
+        // Field 0x0001: UUID
+        USHORT fieldType = 0x0001;
+        DWORD fieldSize = 16;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], entry->uuid, 16); pos += 16;
+
+        // Field 0x0002: Group ID
+        fieldType = 0x0002; fieldSize = 4;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], &entry->uGroupId, 4); pos += 4;
+
+        // Field 0x0003: Image ID
+        fieldType = 0x0003; fieldSize = 4;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], &entry->uImageId, 4); pos += 4;
+
+        // Field 0x0004: Title
+        QByteArray titleUtf8 = QString::fromUtf8(entry->pszTitle).toUtf8();
+        fieldType = 0x0004; fieldSize = titleUtf8.length() + 1;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::strcpy(&buffer[pos], titleUtf8.constData()); pos += fieldSize;
+
+        // Field 0x0005: URL
+        QByteArray urlUtf8 = QString::fromUtf8(entry->pszURL).toUtf8();
+        fieldType = 0x0005; fieldSize = urlUtf8.length() + 1;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::strcpy(&buffer[pos], urlUtf8.constData()); pos += fieldSize;
+
+        // Field 0x0006: Username
+        QByteArray userUtf8 = QString::fromUtf8(entry->pszUserName).toUtf8();
+        fieldType = 0x0006; fieldSize = userUtf8.length() + 1;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::strcpy(&buffer[pos], userUtf8.constData()); pos += fieldSize;
+
+        // Field 0x0007: Password
+        QByteArray passUtf8 = QString::fromUtf8(entry->pszPassword).toUtf8();
+        fieldType = 0x0007; fieldSize = passUtf8.length() + 1;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::strcpy(&buffer[pos], passUtf8.constData()); pos += fieldSize;
+
+        // Erase password from temporary buffer
+        MemUtil::mem_erase(const_cast<char*>(passUtf8.constData()), passUtf8.length());
+
+        // Field 0x0008: Notes
+        QByteArray notesUtf8 = QString::fromUtf8(entry->pszAdditional).toUtf8();
+        fieldType = 0x0008; fieldSize = notesUtf8.length() + 1;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::strcpy(&buffer[pos], notesUtf8.constData()); pos += fieldSize;
+
+        // Field 0x0009: Creation time
+        BYTE compressedTime[5];
+        PwUtil::packTime(&entry->tCreation, compressedTime);
+        fieldType = 0x0009; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x000A: Last modification time
+        PwUtil::packTime(&entry->tLastMod, compressedTime);
+        fieldType = 0x000A; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x000B: Last access time
+        PwUtil::packTime(&entry->tLastAccess, compressedTime);
+        fieldType = 0x000B; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x000C: Expiration time
+        PwUtil::packTime(&entry->tExpire, compressedTime);
+        fieldType = 0x000C; fieldSize = 5;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::memcpy(&buffer[pos], compressedTime, 5); pos += 5;
+
+        // Field 0x000D: Binary description
+        QByteArray binaryDescUtf8 = QString::fromUtf8(entry->pszBinaryDesc).toUtf8();
+        fieldType = 0x000D; fieldSize = binaryDescUtf8.length() + 1;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        std::strcpy(&buffer[pos], binaryDescUtf8.constData()); pos += fieldSize;
+
+        // Field 0x000E: Binary data
+        fieldType = 0x000E; fieldSize = entry->uBinaryDataLen;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+        if (entry->pBinaryData && fieldSize > 0) {
+            std::memcpy(&buffer[pos], entry->pBinaryData, fieldSize);
+        }
+        pos += fieldSize;
+
+        // Field 0xFFFF: End of entry
+        fieldType = 0xFFFF; fieldSize = 0;
+        std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
+        std::memcpy(&buffer[pos], &fieldSize, 4); pos += 4;
+
+        // Lock password again
+        lockEntryPassword(entry);
+    }
+
+    //========================================================================
+    // STEP 6: Compute content hash
+    //========================================================================
+
+    SHA256::Context contentHash;
+    contentHash.update(reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER),
+                       pos - sizeof(PW_DBHEADER));
+    contentHash.finalize(hdr.aContentsHash);
+
+    // Copy completed header to buffer
+    std::memcpy(buffer, &hdr, sizeof(PW_DBHEADER));
+
+    //========================================================================
+    // STEP 7: Derive encryption key
+    //========================================================================
+
+    // Transform master key
+    if (!transformMasterKey(hdr.aMasterSeed2)) {
+        MemUtil::mem_erase(buffer, bufferSize);
+        delete[] buffer;
+        loadAndRemoveAllMetaStreams(false);
+        return PWE_CRYPT_ERROR;
+    }
+
+    protectTransformedMasterKey(false);
+
+    // Derive final encryption key
+    BYTE finalKey[32];
+    SHA256::Context keyHash;
+    keyHash.update(hdr.aMasterSeed, 16);
+    keyHash.update(m_pTransformedMasterKey, 32);
+    keyHash.finalize(finalKey);
+
+    protectTransformedMasterKey(true);
+
+    //========================================================================
+    // STEP 8: Encrypt content
+    //========================================================================
+
+    DWORD encryptedSize = 0;
+
+    if (m_nAlgorithm == ALGO_AES) {
+        CRijndael aes;
+        if (aes.Init(CRijndael::CBC, CRijndael::EncryptDir, finalKey,
+                     CRijndael::Key32Bytes, hdr.aEncryptionIV) != RIJNDAEL_SUCCESS) {
+            MemUtil::mem_erase(finalKey, 32);
+            MemUtil::mem_erase(buffer, bufferSize);
+            delete[] buffer;
+            loadAndRemoveAllMetaStreams(false);
+            return PWE_CRYPT_ERROR;
+        }
+
+        encryptedSize = static_cast<DWORD>(aes.PadEncrypt(
+            reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER),
+            pos - sizeof(PW_DBHEADER),
+            reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER)));
+
+    } else if (m_nAlgorithm == ALGO_TWOFISH) {
+        CTwofish twofish;
+        if (!twofish.Init(finalKey, 32, hdr.aEncryptionIV)) {
+            MemUtil::mem_erase(finalKey, 32);
+            MemUtil::mem_erase(buffer, bufferSize);
+            delete[] buffer;
+            loadAndRemoveAllMetaStreams(false);
+            return PWE_CRYPT_ERROR;
+        }
+
+        encryptedSize = static_cast<DWORD>(twofish.PadEncrypt(
+            reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER),
+            pos - sizeof(PW_DBHEADER),
+            reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER)));
+    }
+
+    MemUtil::mem_erase(finalKey, 32);
+
+    // Verify encryption succeeded
+    if ((encryptedSize % 16) != 0 || encryptedSize == 0) {
+        MemUtil::mem_erase(buffer, bufferSize);
+        delete[] buffer;
+        loadAndRemoveAllMetaStreams(false);
+        return PWE_CRYPT_ERROR;
+    }
+
+    //========================================================================
+    // STEP 9: Write to file
+    //========================================================================
+
+    DWORD totalSize = encryptedSize + sizeof(PW_DBHEADER);
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        MemUtil::mem_erase(buffer, bufferSize);
+        delete[] buffer;
+        loadAndRemoveAllMetaStreams(false);
+        return PWE_NOFILEACCESS_WRITE;
+    }
+
+    if (file.write(buffer, totalSize) != static_cast<qint64>(totalSize)) {
+        file.close();
+        MemUtil::mem_erase(buffer, bufferSize);
+        delete[] buffer;
+        loadAndRemoveAllMetaStreams(false);
+        return PWE_FILEERROR_WRITE;
+    }
+
+    file.close();
+
+    // Optionally compute hash of written data
+    if (pWrittenDataHash32 != nullptr) {
+        SHA256::Context writtenHash;
+        writtenHash.update(reinterpret_cast<BYTE*>(buffer), totalSize);
+        writtenHash.finalize(pWrittenDataHash32);
+    }
+
+    // Backup header
+    std::memcpy(&m_dbLastHeader, &hdr, sizeof(PW_DBHEADER));
+
+    // Cleanup
+    MemUtil::mem_erase(buffer, bufferSize);
+    delete[] buffer;
+    loadAndRemoveAllMetaStreams(false);
+
+    return PWE_SUCCESS;
 }
 
+//=============================================================================
+// Meta-streams and Extended Data
+//=============================================================================
+
+void PwManager::writeExtData(QByteArray& data)
+{
+    // Field 0x0001: Header hash
+    writeExtDataField(data, 0x0001,
+                      reinterpret_cast<const BYTE*>(m_vHeaderHash.constData()),
+                      static_cast<DWORD>(m_vHeaderHash.size()));
+
+    // Field 0x0002: Random data to prevent guessing attacks
+    BYTE randomData[32];
+    Random::fillBuffer(randomData, 32);
+    writeExtDataField(data, 0x0002, randomData, 32);
+    MemUtil::mem_erase(randomData, 32);
+
+    // Field 0xFFFF: Terminator
+    writeExtDataField(data, 0xFFFF, nullptr, 0);
+}
+
+void PwManager::writeExtDataField(QByteArray& data, USHORT usFieldType,
+                                  const BYTE* pData, DWORD dwFieldSize)
+{
+    // Append field type (2 bytes)
+    data.append(reinterpret_cast<const char*>(&usFieldType), 2);
+
+    // Append field size (4 bytes)
+    data.append(reinterpret_cast<const char*>(&dwFieldSize), 4);
+
+    // Append field data if any
+    if (dwFieldSize > 0 && pData != nullptr) {
+        data.append(reinterpret_cast<const char*>(pData), dwFieldSize);
+    }
+}
+
+bool PwManager::addAllMetaStreams()
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:1677-1734
+    // This method adds meta-streams (special entries) that store UI state,
+    // default username, database color, search history, and custom KVPs.
+    // These are preserved during save/load operations.
+
+    bool success = true;
+
+    // UI state meta-stream
+    struct SimpleUIState {
+        DWORD uLastSelectedGroupId;
+        DWORD uLastTopVisibleGroupId;
+        BYTE aLastSelectedEntryUuid[16];
+        BYTE aLastTopVisibleEntryUuid[16];
+    };
+
+    SimpleUIState uiState;
+    std::memset(&uiState, 0, sizeof(SimpleUIState));
+    uiState.uLastSelectedGroupId = m_dwLastSelectedGroupId;
+    uiState.uLastTopVisibleGroupId = m_dwLastTopVisibleGroupId;
+    std::memcpy(uiState.aLastSelectedEntryUuid, m_aLastSelectedEntryUuid, 16);
+    std::memcpy(uiState.aLastTopVisibleEntryUuid, m_aLastTopVisibleEntryUuid, 16);
+
+    success &= addMetaStream("Simple UI State",
+                            reinterpret_cast<BYTE*>(&uiState),
+                            sizeof(SimpleUIState));
+
+    // Default username meta-stream
+    QByteArray defaultUserUtf8 = m_strDefaultUserName.toUtf8();
+    success &= addMetaStream("Default Username",
+                            reinterpret_cast<BYTE*>(defaultUserUtf8.data()),
+                            defaultUserUtf8.length() + 1);
+
+    // Database color meta-stream
+    quint32 colorValue = m_clr.isValid() ? m_clr.rgb() : 0xFFFFFFFF;
+    success &= addMetaStream("Database Color",
+                            reinterpret_cast<BYTE*>(&colorValue),
+                            sizeof(quint32));
+
+    // Search history meta-streams (stored in reverse order)
+    for (int i = m_vSearchHistory.size() - 1; i >= 0; --i) {
+        QByteArray historyItemUtf8 = m_vSearchHistory[i].toUtf8();
+        success &= addMetaStream("Search History Item",
+                                reinterpret_cast<BYTE*>(historyItemUtf8.data()),
+                                historyItemUtf8.length() + 1);
+    }
+
+    // Custom KVP meta-streams (stored in reverse order)
+    for (int i = m_vCustomKVPs.size() - 1; i >= 0; --i) {
+        QByteArray kvpData = serializeCustomKvp(m_vCustomKVPs[i]);
+        if (!kvpData.isEmpty()) {
+            success &= addMetaStream("Custom KVP",
+                                    reinterpret_cast<BYTE*>(kvpData.data()),
+                                    kvpData.length() + 1);
+        }
+    }
+
+    // Add back all unknown meta-streams (preserve unknown data)
+    for (const auto& metaStream : m_vUnknownMetaStreams) {
+        success &= addMetaStream(metaStream.strName,
+                                const_cast<BYTE*>(reinterpret_cast<const BYTE*>(metaStream.vData.constData())),
+                                metaStream.vData.size());
+    }
+
+    return success;
+}
+
+bool PwManager::addMetaStream(const QString& metaDataDesc, BYTE* pData, DWORD dwLength)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:1595-1616
+    // Meta-streams are special entries with fixed field values that store metadata
+
+    Q_ASSERT(!metaDataDesc.isEmpty());
+    Q_ASSERT(pData != nullptr);
+
+    if (pData == nullptr || dwLength == 0) {
+        return true; // Nothing to add
+    }
+
+    // Database must contain at least one group
+    if (m_dwNumGroups == 0) {
+        return false;
+    }
+
+    // Meta-stream "never" time: 2999-12-28 23:59:59
+    static const PW_TIME pwTimeNever = { 2999, 12, 28, 23, 59, 59 };
+
+    // Fixed field values for meta-streams
+    static const char* META_BINDESC = "bin-stream";
+    static const char* META_TITLE = "Meta-Info";
+    static const char* META_USER = "SYSTEM";
+    static const char* META_URL = "$";
+
+    // Create entry structure
+    PW_ENTRY entry;
+    std::memset(&entry, 0, sizeof(PW_ENTRY));
+
+    // Set to first group
+    entry.uGroupId = m_pGroups[0].uGroupId;
+
+    // Set binary data
+    entry.pBinaryData = pData;
+    entry.uBinaryDataLen = dwLength;
+
+    // Convert description to UTF-8
+    QByteArray descUtf8 = metaDataDesc.toUtf8();
+    entry.pszAdditional = new char[descUtf8.length() + 1];
+    std::strcpy(entry.pszAdditional, descUtf8.constData());
+
+    // Fixed field values
+    entry.pszBinaryDesc = new char[std::strlen(META_BINDESC) + 1];
+    std::strcpy(entry.pszBinaryDesc, META_BINDESC);
+
+    entry.pszTitle = new char[std::strlen(META_TITLE) + 1];
+    std::strcpy(entry.pszTitle, META_TITLE);
+
+    entry.pszUserName = new char[std::strlen(META_USER) + 1];
+    std::strcpy(entry.pszUserName, META_USER);
+
+    entry.pszURL = new char[std::strlen(META_URL) + 1];
+    std::strcpy(entry.pszURL, META_URL);
+
+    entry.pszPassword = new char[1];
+    entry.pszPassword[0] = '\0';
+    entry.uPasswordLen = 0;
+
+    // Never timestamps
+    entry.tCreation = pwTimeNever;
+    entry.tLastMod = pwTimeNever;
+    entry.tLastAccess = pwTimeNever;
+    entry.tExpire = pwTimeNever;
+
+    // Image ID = 0
+    entry.uImageId = 0;
+
+    bool result = addEntry(&entry);
+
+    // Clean up allocated strings (addEntry makes copies)
+    delete[] entry.pszAdditional;
+    delete[] entry.pszBinaryDesc;
+    delete[] entry.pszTitle;
+    delete[] entry.pszUserName;
+    delete[] entry.pszURL;
+    delete[] entry.pszPassword;
+
+    return result;
+}
+
+QByteArray PwManager::serializeCustomKvp(const CustomKvp& kvp)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:2032-2042
+    // MFC version uses RC (Remote Control) packing which is complex.
+    // For Qt version, we use a simple format: "key=value"
+
+    QString serialized = kvp.key + "=" + kvp.value;
+    return serialized.toUtf8();
+}
+
+//=============================================================================
 // Stub implementations for remaining methods
 // These will be implemented as needed
+//=============================================================================
 
 DWORD PwManager::getNumberOfItemsInGroup(const QString& groupName) const
 {
