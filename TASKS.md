@@ -13,7 +13,7 @@ Last updated: 2025-12-17
   - Test with different encryption algorithms (AES, Twofish)
   - Test with different key rounds (1K to 10M)
 
-- [ ] Validate Phase 1 completion criteria
+- [ ] Validate Phase 1 completion criteria (#5)
   - Byte-level header comparison
   - Field-by-field entry comparison
   - Verify encryption/decryption correctness
@@ -133,7 +133,8 @@ Last updated: 2025-12-17
 ## 🎯 GitHub Integration
 
 - **Milestones:** 7 phases created with due dates
-- **Open Issues:** 4 high/medium priority tasks
+- **Open Issues:** 2 high priority tasks (Issues #3, #5)
+- **Closed Issues:** 3 completed (Issues #1, #2, #4)
 - **Labels:** priority:high, priority:medium, priority:low, core, testing, documentation
 
 View all issues: https://github.com/kalledalheimer/keepass-qt/issues
