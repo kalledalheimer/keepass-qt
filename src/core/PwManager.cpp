@@ -102,7 +102,7 @@ void PwManager::cleanUp()
     m_vHeaderHash.clear();
 }
 
-void PwManager::allocEntries(DWORD uEntries)
+void PwManager::allocEntries(quint32 uEntries)
 {
     Q_ASSERT(m_pEntries == nullptr);
     Q_ASSERT(uEntries > 0);
@@ -120,7 +120,7 @@ void PwManager::deleteEntryList(bool bFreeStrings)
         return;
 
     if (bFreeStrings) {
-        for (DWORD i = 0; i < m_numEntries; ++i) {
+        for (quint32 i = 0; i < m_numEntries; ++i) {
             PW_ENTRY* e = &m_pEntries[i];
 
             // Unlock password before freeing (if it was locked)
@@ -148,7 +148,7 @@ void PwManager::deleteEntryList(bool bFreeStrings)
     m_numEntries = 0;
 }
 
-void PwManager::allocGroups(DWORD uGroups)
+void PwManager::allocGroups(quint32 uGroups)
 {
     Q_ASSERT(m_pGroups == nullptr);
     Q_ASSERT(uGroups > 0);
@@ -166,7 +166,7 @@ void PwManager::deleteGroupList(bool bFreeStrings)
         return;
 
     if (bFreeStrings) {
-        for (DWORD i = 0; i < m_numGroups; ++i) {
+        for (quint32 i = 0; i < m_numGroups; ++i) {
             PW_GROUP* g = &m_pGroups[i];
 
             // Free strings
@@ -193,14 +193,14 @@ quint32 PwManager::getNumberOfGroups() const
     return m_numGroups;
 }
 
-PW_ENTRY* PwManager::getEntry(DWORD dwIndex)
+PW_ENTRY* PwManager::getEntry(quint32 dwIndex)
 {
     if (dwIndex >= m_numEntries)
         return nullptr;
     return &m_pEntries[dwIndex];
 }
 
-PW_GROUP* PwManager::getGroup(DWORD dwIndex)
+PW_GROUP* PwManager::getGroup(quint32 dwIndex)
 {
     if (dwIndex >= m_numGroups)
         return nullptr;
@@ -214,8 +214,8 @@ void PwManager::lockEntryPassword(PW_ENTRY* pEntry)
 
     // XOR password bytes with session key
     // This is a simple but effective in-memory encryption
-    BYTE* password = reinterpret_cast<BYTE*>(pEntry->pszPassword);
-    for (DWORD i = 0; i < pEntry->uPasswordLen; ++i) {
+    quint8* password = reinterpret_cast<quint8*>(pEntry->pszPassword);
+    for (quint32 i = 0; i < pEntry->uPasswordLen; ++i) {
         password[i] ^= m_sessionKey[i % PWM_SESSION_KEY_SIZE];
     }
 }
@@ -226,8 +226,8 @@ void PwManager::unlockEntryPassword(PW_ENTRY* pEntry)
         return;
 
     // XOR again to restore original (XOR is reversible)
-    BYTE* password = reinterpret_cast<BYTE*>(pEntry->pszPassword);
-    for (DWORD i = 0; i < pEntry->uPasswordLen; ++i) {
+    quint8* password = reinterpret_cast<quint8*>(pEntry->pszPassword);
+    for (quint32 i = 0; i < pEntry->uPasswordLen; ++i) {
         password[i] ^= m_sessionKey[i % PWM_SESSION_KEY_SIZE];
     }
 }
@@ -328,7 +328,7 @@ quint32 PwManager::getKeyEncRounds() const
     return m_keyEncRounds;
 }
 
-void PwManager::setKeyEncRounds(DWORD dwRounds)
+void PwManager::setKeyEncRounds(quint32 dwRounds)
 {
     m_keyEncRounds = dwRounds;
 }
@@ -417,7 +417,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     }
 
     // Allocate memory to hold complete file (with extra buffer space)
-    DWORD uAllocated = (DWORD)uFileSize + 16 + 1 + 64 + 4;
+    quint32 uAllocated = (quint32)uFileSize + 16 + 1 + 64 + 4;
     char* pVirtualFile = new char[uAllocated];
     if (!pVirtualFile) {
         file.close();
@@ -490,6 +490,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     }
 
     // Hash the master password with the salt in the file
+    // Crypto library interface: UINT8 matches Rijndael/Twofish crypto library expectations
     UINT8 uFinalKey[32];
     QByteArray masterSeed = QByteArray(reinterpret_cast<const char*>(hdr.aMasterSeed), 16);
     QByteArray transformedKey = QByteArray(reinterpret_cast<const char*>(m_transformedMasterKey), 32);
@@ -518,7 +519,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     }
 
     // Decrypt the database
-    DWORD uEncryptedPartSize = 0;
+    quint32 uEncryptedPartSize = 0;
 
     if (m_nAlgorithm == ALGO_AES) {
         CRijndael aes;
@@ -586,11 +587,11 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     newDatabase();
 
     // Store header hash (without content hash field)
-    hashHeaderWithoutContentHash((BYTE*)pVirtualFile, m_vHeaderHash);
+    hashHeaderWithoutContentHash((quint8*)pVirtualFile, m_vHeaderHash);
 
     // Parse groups from the decrypted data
-    DWORD pos = sizeof(PW_DBHEADER);
-    DWORD uCurGroup = 0;
+    quint32 pos = sizeof(PW_DBHEADER);
+    quint32 uCurGroup = 0;
 
     PW_GROUP pwGroupTemplate;
     std::memset(&pwGroupTemplate, 0, sizeof(PW_GROUP));
@@ -600,36 +601,38 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
         char* p = &pVirtualFile[pos];
 
         // Check bounds
-        if (pos + 2 > (DWORD)uFileSize) {
+        if (pos + 2 > (quint32)uFileSize) {
             delete[] pwGroupTemplate.pszGroupName;
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
             return PWE_INVALID_FILESTRUCTURE;
         }
 
+        // KDB v1.x file format: Must be exactly 2 bytes (USHORT) for binary compatibility
         USHORT usFieldType;
         std::memcpy(&usFieldType, p, 2);
         p += 2; pos += 2;
 
-        if (pos + 4 > (DWORD)uFileSize) {
+        if (pos + 4 > (quint32)uFileSize) {
             delete[] pwGroupTemplate.pszGroupName;
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
             return PWE_INVALID_FILESTRUCTURE;
         }
 
+        // KDB v1.x file format: Must be exactly 4 bytes (DWORD) for binary compatibility
         DWORD dwFieldSize;
         std::memcpy(&dwFieldSize, p, 4);
         p += 4; pos += 4;
 
-        if (pos + dwFieldSize > (DWORD)uFileSize) {
+        if (pos + dwFieldSize > (quint32)uFileSize) {
             delete[] pwGroupTemplate.pszGroupName;
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
             return PWE_INVALID_FILESTRUCTURE;
         }
 
-        if (!readGroupField(usFieldType, dwFieldSize, (BYTE*)p, &pwGroupTemplate, pRepair)) {
+        if (!readGroupField(usFieldType, dwFieldSize, (quint8*)p, &pwGroupTemplate, pRepair)) {
             delete[] pwGroupTemplate.pszGroupName;
             MemUtil::mem_erase(pVirtualFile, uAllocated);
             delete[] pVirtualFile;
@@ -645,7 +648,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     delete[] pwGroupTemplate.pszGroupName;
 
     // Parse entries from the decrypted data
-    DWORD uCurEntry = 0;
+    quint32 uCurEntry = 0;
 
     PW_ENTRY pwEntryTemplate;
     std::memset(&pwEntryTemplate, 0, sizeof(PW_ENTRY));
@@ -654,7 +657,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     while (uCurEntry < hdr.dwEntries) {
         char* p = &pVirtualFile[pos];
 
-        if (pos + 2 > (DWORD)uFileSize) {
+        if (pos + 2 > (quint32)uFileSize) {
             delete[] pwEntryTemplate.pszTitle;
             delete[] pwEntryTemplate.pszURL;
             delete[] pwEntryTemplate.pszUserName;
@@ -667,11 +670,12 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
             return PWE_INVALID_FILESTRUCTURE;
         }
 
+        // KDB v1.x file format: Must be exactly 2 bytes (USHORT) for binary compatibility
         USHORT usFieldType;
         std::memcpy(&usFieldType, p, 2);
         p += 2; pos += 2;
 
-        if (pos + 4 > (DWORD)uFileSize) {
+        if (pos + 4 > (quint32)uFileSize) {
             delete[] pwEntryTemplate.pszTitle;
             delete[] pwEntryTemplate.pszURL;
             delete[] pwEntryTemplate.pszUserName;
@@ -684,11 +688,12 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
             return PWE_INVALID_FILESTRUCTURE;
         }
 
+        // KDB v1.x file format: Must be exactly 4 bytes (DWORD) for binary compatibility
         DWORD dwFieldSize;
         std::memcpy(&dwFieldSize, p, 4);
         p += 4; pos += 4;
 
-        if (pos + dwFieldSize > (DWORD)uFileSize) {
+        if (pos + dwFieldSize > (quint32)uFileSize) {
             delete[] pwEntryTemplate.pszTitle;
             delete[] pwEntryTemplate.pszURL;
             delete[] pwEntryTemplate.pszUserName;
@@ -701,7 +706,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
             return PWE_INVALID_FILESTRUCTURE;
         }
 
-        if (!readEntryField(usFieldType, dwFieldSize, (BYTE*)p, &pwEntryTemplate, pRepair)) {
+        if (!readEntryField(usFieldType, dwFieldSize, (quint8*)p, &pwEntryTemplate, pRepair)) {
             delete[] pwEntryTemplate.pszTitle;
             delete[] pwEntryTemplate.pszURL;
             delete[] pwEntryTemplate.pszUserName;
@@ -736,7 +741,7 @@ int PwManager::openDatabase(const QString& filePath, PWDB_REPAIR_INFO* pRepair)
     delete[] pVirtualFile;
 
     // Load and remove meta-streams
-    const DWORD dwRemovedStreams = loadAndRemoveAllMetaStreams(true);
+    const quint32 dwRemovedStreams = loadAndRemoveAllMetaStreams(true);
     if (pRepair)
         pRepair->dwRecognizedMetaStreamCount = dwRemovedStreams;
 
@@ -775,7 +780,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     fileSize += 2 + 4 + extData.size();  // field type + field size + data
 
     // Calculate size of all groups
-    for (DWORD i = 0; i < m_numGroups; ++i) {
+    for (quint32 i = 0; i < m_numGroups; ++i) {
         fileSize += 94;  // Fixed overhead for group fields
 
         // Group name (UTF-8)
@@ -785,7 +790,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     }
 
     // Calculate size of all entries
-    for (DWORD i = 0; i < m_numEntries; ++i) {
+    for (quint32 i = 0; i < m_numEntries; ++i) {
         PW_ENTRY* entry = &m_pEntries[i];
 
         // Unlock password temporarily for serialization
@@ -826,7 +831,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     // STEP 2: Allocate memory buffer
     //========================================================================
 
-    DWORD bufferSize = static_cast<DWORD>(allocSize);
+    quint32 bufferSize = static_cast<quint32>(allocSize);
     char* buffer = nullptr;
     try {
         buffer = new char[bufferSize];
@@ -875,11 +880,12 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     // STEP 4: Serialize groups
     //========================================================================
 
-    DWORD pos = sizeof(PW_DBHEADER);  // Skip header for now
+    quint32 pos = sizeof(PW_DBHEADER);  // Skip header for now
 
-    for (DWORD i = 0; i < m_numGroups; ++i) {
+    for (quint32 i = 0; i < m_numGroups; ++i) {
         // First group gets extended data
         if (i == 0) {
+            // KDB v1.x file format: fieldType (USHORT, 2 bytes) and fieldSize (DWORD, 4 bytes) must match exact binary layout
             USHORT fieldType = 0x0000;
             DWORD fieldSize = static_cast<DWORD>(extData.size());
             std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
@@ -904,7 +910,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
         std::strcpy(&buffer[pos], nameUtf8.constData()); pos += fieldSize;
 
         // Field 0x0003: Creation time
-        BYTE compressedTime[5];
+        quint8 compressedTime[5];
         PwUtil::packTime(&m_pGroups[i].tCreation, compressedTime);
         fieldType = 0x0003; fieldSize = 5;
         std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
@@ -960,7 +966,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     // STEP 5: Serialize entries
     //========================================================================
 
-    for (DWORD i = 0; i < m_numEntries; ++i) {
+    for (quint32 i = 0; i < m_numEntries; ++i) {
         PW_ENTRY* entry = &m_pEntries[i];
 
         // Unlock password for serialization
@@ -1024,7 +1030,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
         std::strcpy(&buffer[pos], notesUtf8.constData()); pos += fieldSize;
 
         // Field 0x0009: Creation time
-        BYTE compressedTime[5];
+        quint8 compressedTime[5];
         PwUtil::packTime(&entry->tCreation, compressedTime);
         fieldType = 0x0009; fieldSize = 5;
         std::memcpy(&buffer[pos], &fieldType, 2); pos += 2;
@@ -1102,6 +1108,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     }
 
     // Derive final encryption key
+    // Crypto library interface: BYTE matches Rijndael/Twofish crypto library expectations
     BYTE finalKey[32];
     SHA256::Context keyHash;
     keyHash.update(hdr.aMasterSeed, 16);
@@ -1112,7 +1119,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     // STEP 8: Encrypt content
     //========================================================================
 
-    DWORD encryptedSize = 0;
+    quint32 encryptedSize = 0;
 
     if (m_nAlgorithm == ALGO_AES) {
         CRijndael aes;
@@ -1125,7 +1132,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
             return PWE_CRYPT_ERROR;
         }
 
-        encryptedSize = static_cast<DWORD>(aes.PadEncrypt(
+        encryptedSize = static_cast<quint32>(aes.PadEncrypt(
             reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER),
             pos - sizeof(PW_DBHEADER),
             reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER)));
@@ -1140,7 +1147,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
             return PWE_CRYPT_ERROR;
         }
 
-        encryptedSize = static_cast<DWORD>(twofish.PadEncrypt(
+        encryptedSize = static_cast<quint32>(twofish.PadEncrypt(
             reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER),
             pos - sizeof(PW_DBHEADER),
             reinterpret_cast<BYTE*>(buffer) + sizeof(PW_DBHEADER)));
@@ -1160,7 +1167,7 @@ int PwManager::saveDatabase(const QString& filePath, quint8* pWrittenDataHash32)
     // STEP 9: Write to file
     //========================================================================
 
-    DWORD totalSize = encryptedSize + sizeof(PW_DBHEADER);
+    quint32 totalSize = encryptedSize + sizeof(PW_DBHEADER);
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly)) {
@@ -1404,10 +1411,10 @@ quint32 PwManager::getNumberOfItemsInGroup(const QString& groupName) const
     return 0;
 }
 
-quint32 PwManager::getNumberOfItemsInGroupN(DWORD idGroup) const
+quint32 PwManager::getNumberOfItemsInGroupN(quint32 idGroup) const
 {
-    DWORD count = 0;
-    for (DWORD i = 0; i < m_numEntries; ++i) {
+    quint32 count = 0;
+    for (quint32 i = 0; i < m_numEntries; ++i) {
         if (m_pEntries[i].uGroupId == idGroup)
             count++;
     }
@@ -1419,7 +1426,7 @@ PW_ENTRY* PwManager::getEntryByUuid(const quint8* pUuid)
     if (!pUuid)
         return nullptr;
 
-    for (DWORD i = 0; i < m_numEntries; ++i) {
+    for (quint32 i = 0; i < m_numEntries; ++i) {
         if (std::memcmp(m_pEntries[i].uuid, pUuid, 16) == 0)
             return &m_pEntries[i];
     }
@@ -1427,9 +1434,9 @@ PW_ENTRY* PwManager::getEntryByUuid(const quint8* pUuid)
     return nullptr;
 }
 
-PW_GROUP* PwManager::getGroupById(DWORD idGroup)
+PW_GROUP* PwManager::getGroupById(quint32 idGroup)
 {
-    for (DWORD i = 0; i < m_numGroups; ++i) {
+    for (quint32 i = 0; i < m_numGroups; ++i) {
         if (m_pGroups[i].uGroupId == idGroup)
             return &m_pGroups[i];
     }
@@ -1437,14 +1444,14 @@ PW_GROUP* PwManager::getGroupById(DWORD idGroup)
     return nullptr;
 }
 
-quint32 PwManager::getGroupByIdN(DWORD idGroup) const
+quint32 PwManager::getGroupByIdN(quint32 idGroup) const
 {
-    for (DWORD i = 0; i < m_numGroups; ++i) {
+    for (quint32 i = 0; i < m_numGroups; ++i) {
         if (m_pGroups[i].uGroupId == idGroup)
             return i;
     }
 
-    return static_cast<DWORD>(-1);
+    return static_cast<quint32>(-1);
 }
 
 PW_ENTRY* PwManager::getLastEditedEntry()
@@ -1464,16 +1471,16 @@ bool PwManager::addGroup(const PW_GROUP* pTemplate)
 
     // Generate a new unique group ID if needed
     if (groupCopy.uGroupId == 0 || groupCopy.uGroupId == DWORD_MAX) {
-        DWORD newId = 0;
+        quint32 newId = 0;
         while (true) {
-            Random::fillBuffer(reinterpret_cast<BYTE*>(&newId), sizeof(DWORD));
+            Random::fillBuffer(reinterpret_cast<quint8*>(&newId), sizeof(quint32));
             if (newId == 0 || newId == DWORD_MAX) {
                 continue;
             }
 
             // Check if this ID already exists
             bool exists = false;
-            for (DWORD i = 0; i < m_numGroups; ++i) {
+            for (quint32 i = 0; i < m_numGroups; ++i) {
                 if (m_pGroups[i].uGroupId == newId) {
                     exists = true;
                     break;
@@ -1489,7 +1496,7 @@ bool PwManager::addGroup(const PW_GROUP* pTemplate)
 
     // Expand array if needed
     if (m_numGroups == m_maxGroups) {
-        DWORD newMax = m_maxGroups + 8;
+        quint32 newMax = m_maxGroups + 8;
         PW_GROUP* newGroups = new PW_GROUP[newMax];
         std::memset(newGroups, 0, newMax * sizeof(PW_GROUP));
 
@@ -1507,7 +1514,7 @@ bool PwManager::addGroup(const PW_GROUP* pTemplate)
     return setGroup(m_numGroups - 1, &groupCopy);
 }
 
-bool PwManager::setGroup(DWORD dwIndex, const PW_GROUP* pTemplate)
+bool PwManager::setGroup(quint32 dwIndex, const PW_GROUP* pTemplate)
 {
     Q_ASSERT(dwIndex < m_numGroups);
     Q_ASSERT(pTemplate != nullptr);
@@ -1548,7 +1555,7 @@ bool PwManager::setGroup(DWORD dwIndex, const PW_GROUP* pTemplate)
     return true;
 }
 
-bool PwManager::setEntry(DWORD dwIndex, const PW_ENTRY* pTemplate)
+bool PwManager::setEntry(quint32 dwIndex, const PW_ENTRY* pTemplate)
 {
     Q_ASSERT(dwIndex < m_numEntries);
     Q_ASSERT(pTemplate != nullptr);
@@ -1667,7 +1674,7 @@ bool PwManager::addEntry(const PW_ENTRY* pTemplate)
 
     // Expand array if needed
     if (m_numEntries == m_maxEntries) {
-        DWORD newMax = m_maxEntries + 32;
+        quint32 newMax = m_maxEntries + 32;
         PW_ENTRY* newEntries = new PW_ENTRY[newMax];
         std::memset(newEntries, 0, newMax * sizeof(PW_ENTRY));
 
@@ -1722,14 +1729,14 @@ bool PwManager::addEntry(const PW_ENTRY* pTemplate)
     return setEntry(m_numEntries - 1, &entryCopy);
 }
 
-bool PwManager::deleteEntry(DWORD dwIndex)
+bool PwManager::deleteEntry(quint32 dwIndex)
 {
     Q_UNUSED(dwIndex);
     // TODO: Implement
     return false;
 }
 
-bool PwManager::deleteGroupById(DWORD uGroupId, bool bCreateBackupEntries)
+bool PwManager::deleteGroupById(quint32 uGroupId, bool bCreateBackupEntries)
 {
     Q_UNUSED(uGroupId);
     Q_UNUSED(bCreateBackupEntries);
@@ -1737,7 +1744,7 @@ bool PwManager::deleteGroupById(DWORD uGroupId, bool bCreateBackupEntries)
     return false;
 }
 
-void PwManager::sortGroup(DWORD idGroup, DWORD dwSortByField)
+void PwManager::sortGroup(quint32 idGroup, quint32 dwSortByField)
 {
     Q_UNUSED(idGroup);
     Q_UNUSED(dwSortByField);
@@ -1776,7 +1783,7 @@ bool PwManager::readGroupField(quint16 usFieldType, quint32 dwFieldSize,
     // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:788-850
 
     Q_UNUSED(pRepair);
-    BYTE aCompressedTime[5];
+    quint8 aCompressedTime[5];
 
     switch (usFieldType) {
     case GRP_FIELD_EXT_DATA: // 0x0000
@@ -1865,7 +1872,7 @@ bool PwManager::readEntryField(quint16 usFieldType, quint32 dwFieldSize,
     // Reference: MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp:852-950
 
     Q_UNUSED(pRepair);
-    BYTE aCompressedTime[5];
+    quint8 aCompressedTime[5];
 
     switch (usFieldType) {
     case ENT_FIELD_EXT_DATA: // 0x0000
@@ -2043,10 +2050,10 @@ quint32 PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
 
     Q_UNUSED(bAcceptUnknown);
 
-    DWORD dwRemoved = 0;
+    quint32 dwRemoved = 0;
 
     // Scan entries from back to front (to safely remove while iterating)
-    for (DWORD i = m_numEntries; i > 0; --i) {
+    for (quint32 i = m_numEntries; i > 0; --i) {
         PW_ENTRY* entry = &m_pEntries[i - 1];
 
         // Check if this is a meta-stream entry
@@ -2072,7 +2079,7 @@ quint32 PwManager::loadAndRemoveAllMetaStreams(bool bAcceptUnknown)
             if (entry->pBinaryData) delete[] entry->pBinaryData;
 
             // Shift remaining entries down
-            for (DWORD j = i - 1; j < m_numEntries - 1; ++j) {
+            for (quint32 j = i - 1; j < m_numEntries - 1; ++j) {
                 m_pEntries[j] = m_pEntries[j + 1];
             }
 
@@ -2089,7 +2096,7 @@ quint32 PwManager::deleteLostEntries()
     // Delete entries that reference non-existent groups
     // Reference: MFC version removes orphaned entries
 
-    DWORD dwDeleted = 0;
+    quint32 dwDeleted = 0;
 
     // TODO: Implement orphan entry deletion
     // For now, assume all entries are valid
