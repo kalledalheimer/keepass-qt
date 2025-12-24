@@ -28,4 +28,29 @@ set_tests_properties(test_pwmanager PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-message(STATUS "Tests configured: test_pwmanager")
+# Test: MFC Compatibility (round-trip validation)
+add_executable(test_mfc_compatibility
+    test_mfc_compatibility.cpp
+)
+
+target_link_libraries(test_mfc_compatibility
+    PRIVATE
+        keepass-core
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Test
+)
+
+set_target_properties(test_mfc_compatibility PROPERTIES
+    AUTOMOC ON
+)
+
+add_test(NAME test_mfc_compatibility COMMAND test_mfc_compatibility)
+
+set_tests_properties(test_mfc_compatibility PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+message(STATUS "Tests configured: test_pwmanager, test_mfc_compatibility")
+
+# Add validation tools subdirectory
+add_subdirectory(tools)

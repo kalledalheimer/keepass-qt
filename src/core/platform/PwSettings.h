@@ -1,0 +1,99 @@
+/*
+  Qt KeePass - Platform Settings
+
+  Cross-platform settings management using QSettings.
+  Replaces Windows Registry access from MFC version.
+
+  Platforms:
+  - macOS: ~/Library/Preferences/com.keepass.KeePass.plist
+  - Linux: ~/.config/KeePass/KeePass.conf
+  - Windows: HKEY_CURRENT_USER\Software\KeePass
+*/
+
+#ifndef PWSETTINGS_H
+#define PWSETTINGS_H
+
+#include <QSettings>
+#include <QString>
+#include <QVariant>
+#include "../PwStructs.h"
+
+class PwSettings
+{
+public:
+    // Singleton access
+    static PwSettings& instance();
+
+    // Prevent copying
+    PwSettings(const PwSettings&) = delete;
+    PwSettings& operator=(const PwSettings&) = delete;
+
+    // Database defaults
+    QString getLastDatabasePath() const;
+    void setLastDatabasePath(const QString& path);
+
+    int getDefaultKeyRounds() const;
+    void setDefaultKeyRounds(int rounds);
+
+    quint32 getAlgorithm() const;  // ALGO_AES or ALGO_TWOFISH
+    void setAlgorithm(quint32 algorithm);
+
+    // Security settings
+    int getClipboardTimeout() const;  // Milliseconds (default: 12000)
+    void setClipboardTimeout(int timeoutMs);
+
+    bool getLockOnMinimize() const;
+    void setLockOnMinimize(bool lock);
+
+    bool getLockOnInactivity() const;
+    void setLockOnInactivity(bool lock);
+
+    int getInactivityTimeout() const;  // Seconds (default: 300)
+    void setInactivityTimeout(int seconds);
+
+    // UI preferences
+    bool getRememberWindowSize() const;
+    void setRememberWindowSize(bool remember);
+
+    QByteArray getMainWindowGeometry() const;
+    void setMainWindowGeometry(const QByteArray& geometry);
+
+    QByteArray getMainWindowState() const;
+    void setMainWindowState(const QByteArray& state);
+
+    // Backup settings
+    bool getCreateBackups() const;
+    void setCreateBackups(bool create);
+
+    QString getBackupDirectory() const;
+    void setBackupDirectory(const QString& path);
+
+    // Generic access (for future settings)
+    QVariant get(const QString& key, const QVariant& defaultValue = QVariant()) const;
+    void set(const QString& key, const QVariant& value);
+
+    // Persistence
+    void sync();  // Force write to disk
+
+private:
+    PwSettings();
+    ~PwSettings();
+
+    QSettings m_settings;
+
+    // Setting keys
+    static constexpr const char* KEY_LAST_DB_PATH = "Database/LastPath";
+    static constexpr const char* KEY_DEFAULT_KEY_ROUNDS = "Database/DefaultKeyRounds";
+    static constexpr const char* KEY_ALGORITHM = "Database/Algorithm";
+    static constexpr const char* KEY_CLIPBOARD_TIMEOUT = "Security/ClipboardTimeout";
+    static constexpr const char* KEY_LOCK_ON_MINIMIZE = "Security/LockOnMinimize";
+    static constexpr const char* KEY_LOCK_ON_INACTIVITY = "Security/LockOnInactivity";
+    static constexpr const char* KEY_INACTIVITY_TIMEOUT = "Security/InactivityTimeout";
+    static constexpr const char* KEY_REMEMBER_WINDOW_SIZE = "UI/RememberWindowSize";
+    static constexpr const char* KEY_MAIN_WINDOW_GEOMETRY = "UI/MainWindowGeometry";
+    static constexpr const char* KEY_MAIN_WINDOW_STATE = "UI/MainWindowState";
+    static constexpr const char* KEY_CREATE_BACKUPS = "Backup/CreateBackups";
+    static constexpr const char* KEY_BACKUP_DIRECTORY = "Backup/Directory";
+};
+
+#endif // PWSETTINGS_H

@@ -40,6 +40,11 @@ add_library(keepass-core STATIC
 
     # Constants
     PwConstants.h
+
+    # Platform layer
+    platform/PwSettings.cpp
+    platform/PwSettings.h
+    platform/MemoryProtection.h
 )
 
 target_link_libraries(keepass-core
@@ -57,23 +62,17 @@ target_include_directories(keepass-core
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Platform-specific sources (will be added later)
-# if(WIN32)
-#     target_sources(keepass-core PRIVATE
-#         platform/WindowsPlatform.cpp
-#         platform/WindowsPlatform.h
-#     )
-# elseif(APPLE)
-#     target_sources(keepass-core PRIVATE
-#         platform/MacPlatform.cpp
-#         platform/MacPlatform.h
-#     )
-# else()
-#     target_sources(keepass-core PRIVATE
-#         platform/LinuxPlatform.cpp
-#         platform/LinuxPlatform.h
-#     )
-# endif()
+# Platform-specific sources
+if(WIN32)
+    target_sources(keepass-core PRIVATE
+        platform/MemoryProtection_win.cpp
+    )
+else()
+    # Unix (macOS/Linux)
+    target_sources(keepass-core PRIVATE
+        platform/MemoryProtection_unix.cpp
+    )
+endif()
 
 # Definitions for Windows compatibility
 if(MSVC)

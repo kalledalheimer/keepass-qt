@@ -1,7 +1,18 @@
 # KeePass GUI Library
 add_library(keepass-gui STATIC
-    # Placeholder (GUI will be implemented in Phase 3)
-    GuiStub.cpp
+    # Main window
+    MainWindow.cpp
+    MainWindow.h
+
+    # Models
+    GroupModel.cpp
+    GroupModel.h
+    EntryModel.cpp
+    EntryModel.h
+
+    # Dialogs
+    MasterKeyDialog.cpp
+    MasterKeyDialog.h
 )
 
 target_link_libraries(keepass-gui
