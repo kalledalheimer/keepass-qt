@@ -88,6 +88,7 @@ private:
     // Database operations
     bool openDatabase(const QString &filePath);
     bool saveDatabase();
+    bool saveDatabaseAs();
     bool closeDatabase();
     bool confirmSaveChanges();
 
@@ -143,6 +144,7 @@ private:
     // State
     QString m_currentFilePath;
     bool m_isModified;
+    bool m_hasDatabase;
 };
 
 #endif // MAINWINDOW_H

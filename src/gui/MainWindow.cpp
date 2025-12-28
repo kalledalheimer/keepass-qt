@@ -8,6 +8,7 @@
 #include "MasterKeyDialog.h"
 #include "../core/PwManager.h"
 #include "../core/platform/PwSettings.h"
+#include "../core/util/PwUtil.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -21,6 +22,11 @@
 #include <QFileDialog>
 #include <QCloseEvent>
 #include <QHeaderView>
+#include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QDateTime>
+#include <QDebug>
 
 #include "../core/PwStructs.h"
 #include <cstring>
@@ -36,6 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_toolBar(nullptr)
     , m_statusLabel(nullptr)
     , m_isModified(false)
+    , m_hasDatabase(false)
 {
     setupUi();
     loadSettings();
@@ -335,25 +342,24 @@ void MainWindow::updateWindowTitle()
 
 void MainWindow::updateActions()
 {
-    bool hasDatabase = m_pwManager && m_pwManager->getNumberOfEntries() > 0;
     bool hasSelection = m_entryView && m_entryView->selectionModel()->hasSelection();
 
-    m_actionFileSave->setEnabled(hasDatabase && m_isModified);
-    m_actionFileSaveAs->setEnabled(hasDatabase);
-    m_actionFileClose->setEnabled(hasDatabase);
+    m_actionFileSave->setEnabled(m_hasDatabase && m_isModified);
+    m_actionFileSaveAs->setEnabled(m_hasDatabase);
+    m_actionFileClose->setEnabled(m_hasDatabase);
 
-    m_actionEditAddGroup->setEnabled(hasDatabase);
-    m_actionEditAddEntry->setEnabled(hasDatabase);
+    m_actionEditAddGroup->setEnabled(m_hasDatabase);
+    m_actionEditAddEntry->setEnabled(m_hasDatabase);
     m_actionEditEditEntry->setEnabled(hasSelection);
     m_actionEditDeleteEntry->setEnabled(hasSelection);
-    m_actionEditDeleteGroup->setEnabled(hasDatabase);
-    m_actionEditFind->setEnabled(hasDatabase);
+    m_actionEditDeleteGroup->setEnabled(m_hasDatabase);
+    m_actionEditFind->setEnabled(m_hasDatabase);
 
-    m_actionViewExpandAll->setEnabled(hasDatabase);
-    m_actionViewCollapseAll->setEnabled(hasDatabase);
+    m_actionViewExpandAll->setEnabled(m_hasDatabase);
+    m_actionViewCollapseAll->setEnabled(m_hasDatabase);
 
-    m_actionToolsPasswordGenerator->setEnabled(hasDatabase);
-    m_actionToolsDatabaseSettings->setEnabled(hasDatabase);
+    m_actionToolsPasswordGenerator->setEnabled(m_hasDatabase);
+    m_actionToolsDatabaseSettings->setEnabled(m_hasDatabase);
 }
 
 void MainWindow::updateStatusBar()
@@ -449,10 +455,39 @@ void MainWindow::onFileNew()
         return;
     }
 
-    // TODO: Add default groups (Internet, Email) using the Add Group dialog
-    // For now, we create an empty database and let the user add groups manually
+    // Add default "Backup" group (required - cannot save empty database)
+    PW_GROUP backupGroup;
+    std::memset(&backupGroup, 0, sizeof(PW_GROUP));
+    backupGroup.uGroupId = 1;
+    backupGroup.uImageId = 1;  // Default folder icon
+    backupGroup.usLevel = 0;    // Root level
+    backupGroup.dwFlags = 0;
+
+    // Set name (heap-allocated UTF-8 string)
+    QByteArray groupNameUtf8 = tr("Backup").toUtf8();
+    backupGroup.pszGroupName = new char[groupNameUtf8.size() + 1];
+    std::strcpy(backupGroup.pszGroupName, groupNameUtf8.constData());
+
+    // Set times to current time
+    QDateTime now = QDateTime::currentDateTime();
+    PwUtil::dateTimeToPwTime(now, &backupGroup.tCreation);
+    PwUtil::dateTimeToPwTime(now, &backupGroup.tLastMod);
+    PwUtil::dateTimeToPwTime(now, &backupGroup.tLastAccess);
+    PwManager::getNeverExpireTime(&backupGroup.tExpire);
+
+    if (!m_pwManager->addGroup(&backupGroup)) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to create default group."));
+        delete[] backupGroup.pszGroupName;
+        m_pwManager->newDatabase(); // Reset
+        return;
+    }
+
+    // Group name is copied by addGroup, we can delete our copy
+    delete[] backupGroup.pszGroupName;
 
     // Mark as modified and update UI
+    m_hasDatabase = true;
     m_isModified = true;
     m_currentFilePath.clear();
     refreshModels();
@@ -465,8 +500,43 @@ void MainWindow::onFileNew()
 
 void MainWindow::onFileOpen()
 {
-    // TODO: Implement in next step
-    QMessageBox::information(this, tr("Not Implemented"), tr("File > Open will be implemented next"));
+    // Check if we need to save current database
+    if (!confirmSaveChanges()) {
+        m_statusLabel->setText(tr("Open cancelled"));
+        qDebug() << "Open cancelled by confirmSaveChanges";
+        return;
+    }
+
+    m_statusLabel->setText(tr("Select a database file..."));
+    qApp->processEvents(); // Force status bar update
+
+    qDebug() << "Opening file dialog at:" << QDir::homePath();
+
+    // Show file open dialog
+    QString filePath = QFileDialog::getOpenFileName(
+        this,
+        tr("Open Database"),
+        QDir::homePath(), // Start at home directory
+        tr("KeePass Databases (*.kdb);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog  // Try non-native dialog first
+    );
+
+    qDebug() << "Open dialog returned:" << filePath;
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("No file selected"));
+        qDebug() << "User cancelled open dialog";
+        return; // User cancelled
+    }
+
+    // Open the database
+    if (!openDatabase(filePath)) {
+        // Error already shown in openDatabase()
+        return;
+    }
+
+    m_statusLabel->setText(tr("Database opened successfully"));
 }
 
 void MainWindow::onFileSave()
@@ -476,8 +546,7 @@ void MainWindow::onFileSave()
 
 void MainWindow::onFileSaveAs()
 {
-    // TODO: Implement in next step
-    QMessageBox::information(this, tr("Not Implemented"), tr("File > Save As will be implemented next"));
+    saveDatabaseAs();
 }
 
 void MainWindow::onFileClose()
@@ -595,24 +664,208 @@ void MainWindow::onEntryDoubleClicked(const QModelIndex &index)
 
 bool MainWindow::openDatabase(const QString &filePath)
 {
-    // TODO: Implement
-    Q_UNUSED(filePath);
-    return false;
+    // Check if file exists
+    if (!QFile::exists(filePath)) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Database file does not exist:\n%1").arg(filePath));
+        return false;
+    }
+
+    // Show master key dialog
+    MasterKeyDialog dialog(MasterKeyDialog::OpenExisting, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return false; // User cancelled
+    }
+
+    QString password = dialog.getPassword();
+
+    // Close any existing database
+    closeDatabase();
+
+    // Set the master key
+    int keyResult = m_pwManager->setMasterKey(password, true, "", false, "");
+    if (keyResult != PWE_SUCCESS) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to set master password.\n\nError code: %1").arg(keyResult));
+        return false;
+    }
+
+    // Try to open the database
+    int result = m_pwManager->openDatabase(filePath, nullptr);
+
+    if (result != PWE_SUCCESS) {
+        // Handle different error codes
+        QString errorMsg;
+        switch (result) {
+            case PWE_INVALID_KEY:
+                errorMsg = tr("Invalid master password.\n\nPlease check your password and try again.");
+                break;
+            case PWE_INVALID_FILEHEADER:
+                errorMsg = tr("Invalid database file header.\n\nThe file may be corrupted or not a valid KeePass database.");
+                break;
+            case PWE_INVALID_FILESIGNATURE:
+                errorMsg = tr("Invalid file signature.\n\nThis is not a valid KeePass database file.");
+                break;
+            case PWE_FILEERROR_READ:
+                errorMsg = tr("Cannot read database file.\n\nCheck file permissions and try again.");
+                break;
+            case PWE_UNSUPPORTED_KDBX:
+                errorMsg = tr("Unsupported database format.\n\nThis appears to be a KeePass 2.x (KDBX) file.\nThis version only supports KDB v1.x format.");
+                break;
+            case PWE_INVALID_FILESTRUCTURE:
+                errorMsg = tr("Invalid file structure.\n\nThe database file is corrupted or malformed.");
+                break;
+            default:
+                errorMsg = tr("Failed to open database.\n\nError code: %1").arg(result);
+                break;
+        }
+
+        QMessageBox::critical(this, tr("Error Opening Database"), errorMsg);
+        return false;
+    }
+
+    // Success! Update UI
+    m_hasDatabase = true;
+    m_currentFilePath = filePath;
+    m_isModified = false;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    updateStatusBar();
+
+    return true;
 }
 
 bool MainWindow::saveDatabase()
 {
-    // TODO: Implement
-    return false;
+    // If no file path, use Save As
+    if (m_currentFilePath.isEmpty()) {
+        m_statusLabel->setText(tr("Choose save location..."));
+        return saveDatabaseAs();
+    }
+
+    m_statusLabel->setText(tr("Saving database..."));
+
+    // Save to current file
+    int result = m_pwManager->saveDatabase(m_currentFilePath, nullptr);
+
+    if (result != PWE_SUCCESS) {
+        // Handle different error codes
+        QString errorMsg;
+        switch (result) {
+            case PWE_NOFILEACCESS_WRITE:
+                errorMsg = tr("Cannot write to database file.\n\nCheck file permissions and disk space.");
+                break;
+            case PWE_FILEERROR_WRITE:
+                errorMsg = tr("Error writing database file.\n\nThe file may be in use or the disk may be full.");
+                break;
+            case PWE_INVALID_PARAM:
+                errorMsg = tr("Invalid parameters.\n\nCannot save database.");
+                break;
+            default:
+                errorMsg = tr("Failed to save database.\n\nError code: %1").arg(result);
+                break;
+        }
+
+        QMessageBox::critical(this, tr("Error Saving Database"), errorMsg);
+        return false;
+    }
+
+    // Success! Update UI
+    m_isModified = false;
+    updateWindowTitle();
+    updateActions();
+    m_statusLabel->setText(tr("Database saved successfully"));
+
+    return true;
+}
+
+bool MainWindow::saveDatabaseAs()
+{
+    m_statusLabel->setText(tr("Choose save location..."));
+    qApp->processEvents(); // Force status bar update
+
+    // Show file save dialog
+    QString defaultPath = m_currentFilePath;
+    if (defaultPath.isEmpty()) {
+        defaultPath = QDir::homePath() + "/Untitled.kdb";
+    }
+
+    qDebug() << "Opening save dialog with default path:" << defaultPath;
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Save Database As"),
+        defaultPath,
+        tr("KeePass Databases (*.kdb);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog  // Try non-native dialog first
+    );
+
+    qDebug() << "Save dialog returned:" << filePath;
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("Save cancelled"));
+        qDebug() << "User cancelled save dialog";
+        return false; // User cancelled
+    }
+
+    m_statusLabel->setText(tr("Saving database..."));
+
+    // Add .kdb extension if not present
+    if (!filePath.endsWith(".kdb", Qt::CaseInsensitive)) {
+        filePath += ".kdb";
+    }
+
+    // Save to new file
+    int result = m_pwManager->saveDatabase(filePath, nullptr);
+
+    if (result != PWE_SUCCESS) {
+        QString errorMsg;
+        switch (result) {
+            case PWE_NOFILEACCESS_WRITE:
+                errorMsg = tr("Cannot write to database file.\n\nCheck file permissions and disk space.");
+                break;
+            case PWE_FILEERROR_WRITE:
+                errorMsg = tr("Error writing database file.\n\nThe file may be in use or the disk may be full.");
+                break;
+            case PWE_INVALID_PARAM:
+                errorMsg = tr("Invalid parameters.\n\nCannot save database.");
+                break;
+            default:
+                errorMsg = tr("Failed to save database.\n\nError code: %1").arg(result);
+                break;
+        }
+
+        QMessageBox::critical(this, tr("Error Saving Database"), errorMsg);
+        return false;
+    }
+
+    // Success! Update file path and UI
+    m_currentFilePath = filePath;
+    m_isModified = false;
+    updateWindowTitle();
+    updateActions();
+    m_statusLabel->setText(tr("Database saved successfully"));
+
+    return true;
 }
 
 bool MainWindow::closeDatabase()
 {
-    // TODO: Implement
+    m_hasDatabase = false;
     m_isModified = false;
     m_currentFilePath.clear();
+
+    // Clear the database
+    if (m_pwManager) {
+        m_pwManager->newDatabase(); // Reset to empty state
+    }
+
+    refreshModels();
     updateWindowTitle();
     updateActions();
     updateStatusBar();
+
     return true;
 }
