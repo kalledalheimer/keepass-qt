@@ -455,36 +455,46 @@ void MainWindow::onFileNew()
         return;
     }
 
-    // Add default "Backup" group (required - cannot save empty database)
-    PW_GROUP backupGroup;
-    std::memset(&backupGroup, 0, sizeof(PW_GROUP));
-    backupGroup.uGroupId = 1;
-    backupGroup.uImageId = 1;  // Default folder icon
-    backupGroup.usLevel = 0;    // Root level
-    backupGroup.dwFlags = 0;
+    // Add default groups matching MFC KeePass behavior
+    // MFC creates: General (root) + Windows, Network, Internet, eMail, Homebanking (subgroups)
+    PW_GROUP groupTemplate;
+    std::memset(&groupTemplate, 0, sizeof(PW_GROUP));
 
-    // Set name (heap-allocated UTF-8 string)
-    QByteArray groupNameUtf8 = tr("Backup").toUtf8();
-    backupGroup.pszGroupName = new char[groupNameUtf8.size() + 1];
-    std::strcpy(backupGroup.pszGroupName, groupNameUtf8.constData());
-
-    // Set times to current time
+    // Set common timestamps
     QDateTime now = QDateTime::currentDateTime();
-    PwUtil::dateTimeToPwTime(now, &backupGroup.tCreation);
-    PwUtil::dateTimeToPwTime(now, &backupGroup.tLastMod);
-    PwUtil::dateTimeToPwTime(now, &backupGroup.tLastAccess);
-    PwManager::getNeverExpireTime(&backupGroup.tExpire);
+    PwUtil::dateTimeToPwTime(now, &groupTemplate.tCreation);
+    PwUtil::dateTimeToPwTime(now, &groupTemplate.tLastMod);
+    PwUtil::dateTimeToPwTime(now, &groupTemplate.tLastAccess);
+    PwManager::getNeverExpireTime(&groupTemplate.tExpire);
 
-    if (!m_pwManager->addGroup(&backupGroup)) {
-        QMessageBox::critical(this, tr("Error"),
-                            tr("Failed to create default group."));
-        delete[] backupGroup.pszGroupName;
-        m_pwManager->newDatabase(); // Reset
+    // Helper lambda to add a group
+    auto addDefaultGroup = [&](const QString& name, quint32 imageId, quint16 level, quint32 flags = 0) {
+        QByteArray nameUtf8 = name.toUtf8();
+        groupTemplate.pszGroupName = new char[nameUtf8.size() + 1];
+        std::strcpy(groupTemplate.pszGroupName, nameUtf8.constData());
+        groupTemplate.uImageId = imageId;
+        groupTemplate.usLevel = level;
+        groupTemplate.uGroupId = 0; // Auto-assign ID
+        groupTemplate.dwFlags = flags;
+
+        bool success = m_pwManager->addGroup(&groupTemplate);
+        delete[] groupTemplate.pszGroupName;
+        return success;
+    };
+
+    // Create root group "General" (expanded by default)
+    if (!addDefaultGroup(tr("General"), 48, 0, PWGF_EXPANDED)) {
+        QMessageBox::critical(this, tr("Error"), tr("Failed to create default groups."));
+        m_pwManager->newDatabase();
         return;
     }
 
-    // Group name is copied by addGroup, we can delete our copy
-    delete[] backupGroup.pszGroupName;
+    // Create subgroups (level 1 - children of General)
+    addDefaultGroup(tr("Windows"), 38, 1);
+    addDefaultGroup(tr("Network"), 3, 1);
+    addDefaultGroup(tr("Internet"), 1, 1);
+    addDefaultGroup(tr("eMail"), 19, 1);
+    addDefaultGroup(tr("Homebanking"), 37, 1);
 
     // Mark as modified and update UI
     m_hasDatabase = true;
