@@ -45,8 +45,9 @@ Last updated: 2025-12-24
   - [x] EntryModel (QAbstractTableModel for table view)
   - [x] Database view layout (splitter, tree, table)
   - [x] File > New (create new database with MasterKeyDialog)
-  - [ ] File > Open (open existing KDB files)
-  - [ ] File > Save/Save As (persist to disk)
+  - [x] File > Open (open existing KDB files)
+  - [x] File > Save/Save As (persist to disk)
+  - [x] Default groups matching MFC (General + 5 subgroups)
   - [ ] Add Group dialog
   - [ ] Add Entry dialog
   - [ ] Edit Entry dialog (double-click)
@@ -82,6 +83,34 @@ Last updated: 2025-12-24
   - Explain crypto/security-critical code
 
 ## ✅ Recently Completed
+
+### Session 8: Phase 3 GUI - File Operations Complete (2025-12-29)
+- [x] **Implemented File > Open**
+  - MasterKeyDialog integration (OpenExisting mode)
+  - File dialog with .kdb filter
+  - Comprehensive error handling for all PwError codes
+  - Complete open workflow: select file → enter password → load database
+- [x] **Implemented File > Save**
+  - Falls back to Save As when no path exists
+  - Updates window title and status
+  - Proper state management (m_isModified flag)
+- [x] **Implemented File > Save As**
+  - File dialog with default path
+  - Automatic .kdb extension appending
+  - Updates m_currentFilePath to new location
+- [x] **Fixed Default Groups to Match MFC**
+  - General (root, icon 48, PWGF_EXPANDED)
+  - 5 subgroups: Windows (38), Network (3), Internet (1), eMail (19), Homebanking (37)
+  - Verified against MFC source: PwSafeDlg.cpp:4224-4245
+- [x] **Bugs Fixed**
+  - File > Save grayed out after File > New (added m_hasDatabase flag)
+  - DB_EMPTY error (code 20) when saving (fixed with default groups)
+  - File dialogs not appearing on macOS (QFileDialog::DontUseNativeDialog)
+  - Default groups structure didn't match MFC (updated to exact layout)
+- [x] **Complete File Workflow Tested**
+  - New → Save → Close → Open cycle fully functional
+  - All operations update UI state correctly
+  - Status bar provides user feedback
 
 ### Session 7: Phase 3 GUI - File > New Implementation (2025-12-24)
 - [x] **Created MasterKeyDialog**
