@@ -7,6 +7,7 @@
 #include "EntryModel.h"
 #include "MasterKeyDialog.h"
 #include "AddGroupDialog.h"
+#include "IconManager.h"
 #include "../core/PwManager.h"
 #include "../core/platform/PwSettings.h"
 #include "../core/util/PwUtil.h"
@@ -73,18 +74,21 @@ void MainWindow::setupUi()
 
 void MainWindow::createActions()
 {
+    // Get icon manager instance
+    IconManager &iconMgr = IconManager::instance();
+
     // File menu actions
-    m_actionFileNew = new QAction(tr("&New Database..."), this);
+    m_actionFileNew = new QAction(iconMgr.getToolbarIcon("tb_new"), tr("&New Database..."), this);
     m_actionFileNew->setShortcut(QKeySequence::New);
     m_actionFileNew->setStatusTip(tr("Create a new password database"));
     connect(m_actionFileNew, &QAction::triggered, this, &MainWindow::onFileNew);
 
-    m_actionFileOpen = new QAction(tr("&Open Database..."), this);
-    m_actionFileOpen->setShortcut(QKeySequence::Open);
+    m_actionFileOpen = new QAction(iconMgr.getToolbarIcon("tb_open"), tr("&Open Database..."), this);
+    m_actionFileOpen->setShortcut(QKeySequence::New);
     m_actionFileOpen->setStatusTip(tr("Open an existing password database"));
     connect(m_actionFileOpen, &QAction::triggered, this, &MainWindow::onFileOpen);
 
-    m_actionFileSave = new QAction(tr("&Save Database"), this);
+    m_actionFileSave = new QAction(iconMgr.getToolbarIcon("tb_save"), tr("&Save Database"), this);
     m_actionFileSave->setShortcut(QKeySequence::Save);
     m_actionFileSave->setStatusTip(tr("Save the current password database"));
     m_actionFileSave->setEnabled(false);
@@ -108,35 +112,35 @@ void MainWindow::createActions()
     connect(m_actionFileExit, &QAction::triggered, this, &MainWindow::onFileExit);
 
     // Edit menu actions
-    m_actionEditAddGroup = new QAction(tr("Add &Group..."), this);
+    m_actionEditAddGroup = new QAction(iconMgr.getGroupIcon(IconManager::ICON_GROUP), tr("Add &Group..."), this);
     m_actionEditAddGroup->setStatusTip(tr("Add a new group"));
     m_actionEditAddGroup->setEnabled(false);
     connect(m_actionEditAddGroup, &QAction::triggered, this, &MainWindow::onEditAddGroup);
 
-    m_actionEditAddEntry = new QAction(tr("Add &Entry..."), this);
+    m_actionEditAddEntry = new QAction(iconMgr.getToolbarIcon("tb_adden"), tr("Add &Entry..."), this);
     m_actionEditAddEntry->setShortcut(Qt::Key_Insert);
     m_actionEditAddEntry->setStatusTip(tr("Add a new entry"));
     m_actionEditAddEntry->setEnabled(false);
     connect(m_actionEditAddEntry, &QAction::triggered, this, &MainWindow::onEditAddEntry);
 
-    m_actionEditEditEntry = new QAction(tr("&Edit Entry..."), this);
+    m_actionEditEditEntry = new QAction(iconMgr.getToolbarIcon("tb_edite"), tr("&Edit Entry..."), this);
     m_actionEditEditEntry->setShortcut(Qt::Key_Return);
     m_actionEditEditEntry->setStatusTip(tr("Edit the selected entry"));
     m_actionEditEditEntry->setEnabled(false);
     connect(m_actionEditEditEntry, &QAction::triggered, this, &MainWindow::onEditEditEntry);
 
-    m_actionEditDeleteEntry = new QAction(tr("&Delete Entry"), this);
+    m_actionEditDeleteEntry = new QAction(iconMgr.getToolbarIcon("tb_delet"), tr("&Delete Entry"), this);
     m_actionEditDeleteEntry->setShortcut(Qt::Key_Delete);
     m_actionEditDeleteEntry->setStatusTip(tr("Delete the selected entry"));
     m_actionEditDeleteEntry->setEnabled(false);
     connect(m_actionEditDeleteEntry, &QAction::triggered, this, &MainWindow::onEditDeleteEntry);
 
-    m_actionEditDeleteGroup = new QAction(tr("Delete &Group"), this);
+    m_actionEditDeleteGroup = new QAction(iconMgr.getToolbarIcon("tb_delet"), tr("Delete &Group"), this);
     m_actionEditDeleteGroup->setStatusTip(tr("Delete the selected group"));
     m_actionEditDeleteGroup->setEnabled(false);
     connect(m_actionEditDeleteGroup, &QAction::triggered, this, &MainWindow::onEditDeleteGroup);
 
-    m_actionEditFind = new QAction(tr("&Find..."), this);
+    m_actionEditFind = new QAction(iconMgr.getToolbarIcon("tb_find"), tr("&Find..."), this);
     m_actionEditFind->setShortcut(QKeySequence::Find);
     m_actionEditFind->setStatusTip(tr("Find entries"));
     m_actionEditFind->setEnabled(false);

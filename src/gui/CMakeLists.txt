@@ -15,6 +15,13 @@ add_library(keepass-gui STATIC
     MasterKeyDialog.h
     AddGroupDialog.cpp
     AddGroupDialog.h
+
+    # Icon management
+    IconManager.cpp
+    IconManager.h
+
+    # Resources
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 
 target_link_libraries(keepass-gui

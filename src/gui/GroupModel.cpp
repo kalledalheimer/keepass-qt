@@ -3,6 +3,7 @@
 */
 
 #include "GroupModel.h"
+#include "IconManager.h"
 #include "../core/PwManager.h"
 #include "../core/PwStructs.h"
 
@@ -122,8 +123,8 @@ QVariant GroupModel::data(const QModelIndex &index, int role) const
         return QString::fromUtf8(group->pszGroupName);
 
     case Qt::DecorationRole:
-        // TODO: Return group icon based on uImageId
-        return QVariant();
+        // Return group icon based on uImageId
+        return IconManager::instance().getGroupIcon(group->uImageId);
 
     case Qt::ToolTipRole:
         return QString::fromUtf8(group->pszGroupName);

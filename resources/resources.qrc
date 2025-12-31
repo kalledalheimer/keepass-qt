@@ -1,0 +1,14 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/icons">
+        <file>icons/clienticex.bmp</file>
+        <file>icons/tb_new.bmp</file>
+        <file>icons/tb_open.bmp</file>
+        <file>icons/tb_save.bmp</file>
+        <file>icons/tb_adden.bmp</file>
+        <file>icons/tb_edite.bmp</file>
+        <file>icons/tb_delet.bmp</file>
+        <file>icons/tb_find.bmp</file>
+        <file>icons/tb_about.bmp</file>
+    </qresource>
+</RCC>
