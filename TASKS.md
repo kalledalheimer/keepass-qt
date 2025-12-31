@@ -48,7 +48,7 @@ Last updated: 2025-12-24
   - [x] File > Open (open existing KDB files)
   - [x] File > Save/Save As (persist to disk)
   - [x] Default groups matching MFC (General + 5 subgroups)
-  - [ ] Add Group dialog
+  - [x] Add Group dialog
   - [ ] Add Entry dialog
   - [ ] Edit Entry dialog (double-click)
   - [ ] Delete operations
@@ -84,7 +84,7 @@ Last updated: 2025-12-24
 
 ## ✅ Recently Completed
 
-### Session 8: Phase 3 GUI - File Operations Complete (2025-12-29)
+### Session 8: Phase 3 GUI - File Operations & Add Group (2025-12-29)
 - [x] **Implemented File > Open**
   - MasterKeyDialog integration (OpenExisting mode)
   - File dialog with .kdb filter
@@ -111,6 +111,13 @@ Last updated: 2025-12-24
   - New → Save → Close → Open cycle fully functional
   - All operations update UI state correctly
   - Status bar provides user feedback
+- [x] **Implemented Add Group Dialog**
+  - Group name input with validation (empty check, reserved names)
+  - Icon ID selector (0-68, default: 48 for folder)
+  - Reserved name blocking: "Search Results", "Backup" (case-insensitive)
+  - Proper PW_GROUP creation with timestamps
+  - Integration with Edit > Add Group menu and toolbar
+  - Verified against MFC: AddGroupDlg.cpp, PwSafeDlg.cpp:2599-2648
 
 ### Session 7: Phase 3 GUI - File > New Implementation (2025-12-24)
 - [x] **Created MasterKeyDialog**
