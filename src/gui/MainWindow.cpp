@@ -6,6 +6,7 @@
 #include "GroupModel.h"
 #include "EntryModel.h"
 #include "MasterKeyDialog.h"
+#include "AddGroupDialog.h"
 #include "../core/PwManager.h"
 #include "../core/platform/PwSettings.h"
 #include "../core/util/PwUtil.h"
@@ -573,7 +574,59 @@ void MainWindow::onFileExit()
 
 void MainWindow::onEditAddGroup()
 {
-    // TODO: Implement
+    // Show Add Group dialog
+    AddGroupDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("Add group cancelled"));
+        return;
+    }
+
+    // Get dialog results
+    QString groupName = dialog.getGroupName();
+    quint32 iconId = dialog.getIconId();
+
+    // Create group template
+    PW_GROUP groupTemplate;
+    std::memset(&groupTemplate, 0, sizeof(PW_GROUP));
+
+    // Set timestamps
+    QDateTime now = QDateTime::currentDateTime();
+    PwUtil::dateTimeToPwTime(now, &groupTemplate.tCreation);
+    PwUtil::dateTimeToPwTime(now, &groupTemplate.tLastMod);
+    PwUtil::dateTimeToPwTime(now, &groupTemplate.tLastAccess);
+    PwManager::getNeverExpireTime(&groupTemplate.tExpire);
+
+    // Set group properties
+    QByteArray nameUtf8 = groupName.toUtf8();
+    groupTemplate.pszGroupName = new char[nameUtf8.size() + 1];
+    std::strcpy(groupTemplate.pszGroupName, nameUtf8.constData());
+
+    groupTemplate.uImageId = iconId;
+    groupTemplate.uGroupId = 0;     // 0 = auto-assign new ID
+    groupTemplate.usLevel = 0;      // Top-level group
+    groupTemplate.dwFlags = 0;      // No special flags
+
+    // Add group to database
+    bool success = m_pwManager->addGroup(&groupTemplate);
+
+    // Clean up allocated memory
+    delete[] groupTemplate.pszGroupName;
+
+    if (!success) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to add group."));
+        m_statusLabel->setText(tr("Failed to add group"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    m_statusLabel->setText(tr("Group '%1' added successfully").arg(groupName));
+
+    // TODO: Select the newly added group in the tree view
 }
 
 void MainWindow::onEditAddEntry()

@@ -13,6 +13,8 @@ add_library(keepass-gui STATIC
     # Dialogs
     MasterKeyDialog.cpp
     MasterKeyDialog.h
+    AddGroupDialog.cpp
+    AddGroupDialog.h
 )
 
 target_link_libraries(keepass-gui
