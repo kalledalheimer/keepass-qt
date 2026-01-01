@@ -15,6 +15,9 @@
 
 int main(int argc, char *argv[])
 {
+    // Initialize Qt resources from static library
+    Q_INIT_RESOURCE(resources);
+
     QApplication app(argc, argv);
     app.setApplicationName("KeePass");
     app.setApplicationVersion(PWM_VERSION_STR);

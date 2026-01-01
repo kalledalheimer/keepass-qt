@@ -1,14 +1,14 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
     <qresource prefix="/icons">
-        <file>icons/clienticex.bmp</file>
-        <file>icons/tb_new.bmp</file>
-        <file>icons/tb_open.bmp</file>
-        <file>icons/tb_save.bmp</file>
-        <file>icons/tb_adden.bmp</file>
-        <file>icons/tb_edite.bmp</file>
-        <file>icons/tb_delet.bmp</file>
-        <file>icons/tb_find.bmp</file>
-        <file>icons/tb_about.bmp</file>
+        <file alias="clienticex.bmp">icons/clienticex.bmp</file>
+        <file alias="tb_new.bmp">icons/tb_new.bmp</file>
+        <file alias="tb_open.bmp">icons/tb_open.bmp</file>
+        <file alias="tb_save.bmp">icons/tb_save.bmp</file>
+        <file alias="tb_adden.bmp">icons/tb_adden.bmp</file>
+        <file alias="tb_edite.bmp">icons/tb_edite.bmp</file>
+        <file alias="tb_delet.bmp">icons/tb_delet.bmp</file>
+        <file alias="tb_find.bmp">icons/tb_find.bmp</file>
+        <file alias="tb_about.bmp">icons/tb_about.bmp</file>
     </qresource>
 </RCC>

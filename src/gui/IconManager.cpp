@@ -7,6 +7,7 @@
 #include <QPixmap>
 #include <QDebug>
 #include <QFileInfo>
+#include <QDir>
 
 IconManager& IconManager::instance()
 {
