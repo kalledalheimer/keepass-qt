@@ -49,7 +49,8 @@ Last updated: 2025-12-24
   - [x] File > Save/Save As (persist to disk)
   - [x] Default groups matching MFC (General + 5 subgroups)
   - [x] Add Group dialog
-  - [ ] Add Entry dialog
+  - [x] Add Entry dialog
+  - [x] Icon system (toolbar and tree view icons)
   - [ ] Edit Entry dialog (double-click)
   - [ ] Delete operations
   - [ ] Connect group selection to entry filtering
@@ -84,7 +85,7 @@ Last updated: 2025-12-24
 
 ## ✅ Recently Completed
 
-### Session 8: Phase 3 GUI - File Operations & Add Group (2025-12-29)
+### Session 8: Phase 3 GUI - File Operations, Add Group, Icons, Add Entry (2025-12-31)
 - [x] **Implemented File > Open**
   - MasterKeyDialog integration (OpenExisting mode)
   - File dialog with .kdb filter
@@ -118,6 +119,25 @@ Last updated: 2025-12-24
   - Proper PW_GROUP creation with timestamps
   - Integration with Edit > Add Group menu and toolbar
   - Verified against MFC: AddGroupDlg.cpp, PwSafeDlg.cpp:2599-2648
+- [x] **Implemented Icon System**
+  - IconManager singleton for centralized icon management
+  - 69 icons from clienticex.bmp (16x16 each, 1104x16 total)
+  - 8 toolbar icons (tb_*.bmp files)
+  - Magenta (RGB 255,0,255) transparency support
+  - Qt resource system integration (icons embedded in binary)
+  - Applied to toolbar buttons and tree view groups
+  - Fixed resource loading with Q_INIT_RESOURCE() and alias attributes
+  - Verified against MFC: WinGUI/res/ icons, PwSafe.cpp:624-635
+- [x] **Implemented Add Entry Dialog**
+  - All 10 fields: Group, Icon, Title, Username, Password, Repeat, URL, Notes, Expiration
+  - Auto-generated random password (16 characters)
+  - Show/hide password toggle
+  - Real-time password validation (match check)
+  - Expiration date/time picker (default: 1 year, 23:59:59)
+  - Group dropdown with "Search Results" filtering
+  - PW_ENTRY creation with all fields and timestamps
+  - Integration with Edit > Add Entry (Insert key, toolbar button)
+  - Verified against MFC: AddEntryDlg.cpp, PwSafeDlg.cpp:3173
 
 ### Session 7: Phase 3 GUI - File > New Implementation (2025-12-24)
 - [x] **Created MasterKeyDialog**
