@@ -37,9 +37,9 @@ Last updated: 2025-12-24
 
 ---
 
-## 🔴 High Priority - Phase 3: Basic GUI (In Progress)
+## ✅ Phase 3: Basic GUI - COMPLETE! 🎉
 
-- [ ] Create basic GUI structure (#6) - **IN PROGRESS** ⏳
+- [x] Create basic GUI structure (#6) - **COMPLETE** ✅
   - [x] MainWindow skeleton with menu bar
   - [x] GroupModel (QAbstractItemModel for tree view)
   - [x] EntryModel (QAbstractTableModel for table view)
@@ -51,9 +51,9 @@ Last updated: 2025-12-24
   - [x] Add Group dialog
   - [x] Add Entry dialog
   - [x] Icon system (toolbar and tree view icons)
-  - [ ] Edit Entry dialog (double-click)
-  - [ ] Delete operations
-  - [ ] Connect group selection to entry filtering
+  - [x] Edit Entry dialog (double-click)
+  - [x] Delete operations (Entry and Group with backup option)
+  - [x] Connect group selection to entry filtering
 
 **Goal:** Functional GUI that can create, open, view, and edit KDB databases
 
@@ -85,7 +85,8 @@ Last updated: 2025-12-24
 
 ## ✅ Recently Completed
 
-### Session 8: Phase 3 GUI - File Operations, Add Group, Icons, Add Entry (2025-12-31)
+### Session 8: Phase 3 GUI - COMPLETE! 🎉 (2025-12-31 to 2026-01-01)
+**Phase 3 Milestone Achieved:** Full CRUD operations with icons and filtering
 - [x] **Implemented File > Open**
   - MasterKeyDialog integration (OpenExisting mode)
   - File dialog with .kdb filter
@@ -138,6 +139,32 @@ Last updated: 2025-12-24
   - PW_ENTRY creation with all fields and timestamps
   - Integration with Edit > Add Entry (Insert key, toolbar button)
   - Verified against MFC: AddEntryDlg.cpp, PwSafeDlg.cpp:3173
+- [x] **Implemented Edit Entry Dialog**
+  - Extended AddEntryDialog to support both Add and Edit modes
+  - Single constructor with Mode enum (AddMode/EditMode)
+  - populateFromEntry() method loads existing entry data
+  - Password unlock/lock during editing for security
+  - UUID and creation time preservation during updates
+  - Binary attachment data copying if present
+  - PW_TIME comparison for expiration check (field-by-field)
+  - Integration with Edit > Edit Entry (Return key, double-click)
+  - Entry lookup by pointer comparison in PwManager
+  - Verified against MFC: EditEntryDlg.cpp, PwSafeDlg.cpp:3324
+- [x] **Implemented Delete Operations**
+  - Delete Entry with confirmation dialog
+  - Delete Group with backup option for entries
+  - Entry backup moved to "Backup" group when requested
+  - Prevents deletion of last remaining group
+  - Informative status messages (with backup count if applicable)
+  - Integration with Edit > Delete Entry/Group (Delete key)
+  - Verified against MFC: PwSafeDlg.cpp:3461 (DeleteEntry), PwSafeDlg.cpp:2756 (DeleteGroup)
+- [x] **Implemented Group Selection Filtering**
+  - EntryModel filters by selected group ID
+  - Status bar shows group name and entry count
+  - Automatic filtering on group selection change
+  - Clear filter when no group selected
+  - Entry icons now display in table view (using IconManager)
+  - Verified against MFC: PwSafeDlg.cpp:7823 (OnGroupsSelchanged)
 
 ### Session 7: Phase 3 GUI - File > New Implementation (2025-12-24)
 - [x] **Created MasterKeyDialog**
