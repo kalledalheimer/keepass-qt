@@ -32,6 +32,10 @@ private slots:
     void testSetMasterKey();
     void testAddGroup();
     void testAddEntry();
+    void testDeleteEntry();
+    void testDeleteGroup();
+    void testBackupEntry();
+    void testGetGroupId();
     void testSaveAndOpenEmptyDatabase();
     void testSaveAndOpenDatabaseWithData();
     void testPasswordEncryption();
@@ -517,6 +521,241 @@ void TestPwManager::testKDBXDetection()
 
     delete mgr;
     QFile::remove(testFile);
+}
+
+void TestPwManager::testDeleteEntry()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add a group
+    PW_GROUP group;
+    std::memset(&group, 0, sizeof(PW_GROUP));
+    group.pszGroupName = const_cast<char*>("Test Group");
+    group.uGroupId = 1;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+    group.tLastAccess = group.tCreation;
+    group.tLastMod = group.tCreation;
+    PwManager::getNeverExpireTime(&group.tExpire);
+    group.uImageId = 1;
+    QVERIFY(mgr->addGroup(&group));
+
+    // Add multiple entries
+    for (int i = 0; i < 3; ++i) {
+        PW_ENTRY entry;
+        std::memset(&entry, 0, sizeof(PW_ENTRY));
+        entry.uGroupId = 1;
+        entry.uImageId = 0;
+        entry.pszTitle = const_cast<char*>(QString("Entry %1").arg(i).toUtf8().constData());
+        entry.pszUserName = const_cast<char*>("user");
+        entry.pszPassword = const_cast<char*>("pass");
+        entry.pszURL = const_cast<char*>("");
+        entry.pszAdditional = const_cast<char*>("");
+        entry.pszBinaryDesc = const_cast<char*>("");
+        entry.pBinaryData = nullptr;
+        entry.uBinaryDataLen = 0;
+        Random::fillBuffer(entry.uuid, 16);
+        PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry.tCreation);
+        entry.tLastAccess = entry.tCreation;
+        entry.tLastMod = entry.tCreation;
+        PwManager::getNeverExpireTime(&entry.tExpire);
+
+        QVERIFY(mgr->addEntry(&entry));
+    }
+
+    QCOMPARE((int)mgr->getNumberOfEntries(), 3);
+
+    // Delete middle entry (index 1)
+    QVERIFY(mgr->deleteEntry(1));
+    QCOMPARE((int)mgr->getNumberOfEntries(), 2);
+
+    // Verify entries shifted correctly
+    PW_ENTRY* remainingEntry1 = mgr->getEntry(0);
+    QVERIFY(remainingEntry1 != nullptr);
+
+    PW_ENTRY* remainingEntry2 = mgr->getEntry(1);
+    QVERIFY(remainingEntry2 != nullptr);
+
+    // Delete first entry (index 0)
+    QVERIFY(mgr->deleteEntry(0));
+    QCOMPARE((int)mgr->getNumberOfEntries(), 1);
+
+    // Delete last entry
+    QVERIFY(mgr->deleteEntry(0));
+    QCOMPARE((int)mgr->getNumberOfEntries(), 0);
+
+    // Try to delete non-existent entry
+    QVERIFY(!mgr->deleteEntry(0));
+
+    delete mgr;
+}
+
+void TestPwManager::testDeleteGroup()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add groups
+    for (int i = 0; i < 3; ++i) {
+        PW_GROUP group;
+        std::memset(&group, 0, sizeof(PW_GROUP));
+        group.pszGroupName = const_cast<char*>(QString("Group %1").arg(i).toUtf8().constData());
+        group.uGroupId = i + 1;
+        PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+        group.tLastAccess = group.tCreation;
+        group.tLastMod = group.tCreation;
+        PwManager::getNeverExpireTime(&group.tExpire);
+        group.uImageId = 1;
+        QVERIFY(mgr->addGroup(&group));
+    }
+
+    QCOMPARE((int)mgr->getNumberOfGroups(), 3);
+
+    // Add entry to group 2
+    PW_ENTRY entry;
+    std::memset(&entry, 0, sizeof(PW_ENTRY));
+    entry.uGroupId = 2;
+    entry.uImageId = 0;
+    entry.pszTitle = const_cast<char*>("Test Entry");
+    entry.pszUserName = const_cast<char*>("user");
+    entry.pszPassword = const_cast<char*>("pass");
+    entry.pszURL = const_cast<char*>("");
+    entry.pszAdditional = const_cast<char*>("");
+    entry.pszBinaryDesc = const_cast<char*>("");
+    entry.pBinaryData = nullptr;
+    entry.uBinaryDataLen = 0;
+    Random::fillBuffer(entry.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry.tCreation);
+    entry.tLastAccess = entry.tCreation;
+    entry.tLastMod = entry.tCreation;
+    PwManager::getNeverExpireTime(&entry.tExpire);
+    QVERIFY(mgr->addEntry(&entry));
+
+    QCOMPARE((int)mgr->getNumberOfEntries(), 1);
+
+    // Delete group 2 without backup
+    QVERIFY(mgr->deleteGroupById(2, false));
+    QCOMPARE((int)mgr->getNumberOfGroups(), 2);
+    QCOMPARE((int)mgr->getNumberOfEntries(), 0);  // Entry should be deleted too
+
+    // Delete group 1 (empty group)
+    QVERIFY(mgr->deleteGroupById(1, false));
+    QCOMPARE((int)mgr->getNumberOfGroups(), 1);
+
+    delete mgr;
+}
+
+void TestPwManager::testBackupEntry()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add a group
+    PW_GROUP group;
+    std::memset(&group, 0, sizeof(PW_GROUP));
+    group.pszGroupName = const_cast<char*>("Test Group");
+    group.uGroupId = 1;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+    group.tLastAccess = group.tCreation;
+    group.tLastMod = group.tCreation;
+    PwManager::getNeverExpireTime(&group.tExpire);
+    group.uImageId = 1;
+    QVERIFY(mgr->addGroup(&group));
+
+    // Add an entry
+    PW_ENTRY entry;
+    std::memset(&entry, 0, sizeof(PW_ENTRY));
+    entry.uGroupId = 1;
+    entry.uImageId = 0;
+    entry.pszTitle = const_cast<char*>("Original Entry");
+    entry.pszUserName = const_cast<char*>("user");
+    entry.pszPassword = const_cast<char*>("password123");
+    entry.pszURL = const_cast<char*>("http://example.com");
+    entry.pszAdditional = const_cast<char*>("notes");
+    entry.pszBinaryDesc = const_cast<char*>("");
+    entry.pBinaryData = nullptr;
+    entry.uBinaryDataLen = 0;
+    Random::fillBuffer(entry.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry.tCreation);
+    entry.tLastAccess = entry.tCreation;
+    entry.tLastMod = entry.tCreation;
+    PwManager::getNeverExpireTime(&entry.tExpire);
+    QVERIFY(mgr->addEntry(&entry));
+
+    QCOMPARE((int)mgr->getNumberOfGroups(), 1);
+    QCOMPARE((int)mgr->getNumberOfEntries(), 1);
+
+    // Backup the entry
+    PW_ENTRY* originalEntry = mgr->getEntry(0);
+    bool groupCreated = false;
+    QVERIFY(mgr->backupEntry(originalEntry, &groupCreated));
+
+    // Should have created "Backup" group
+    QVERIFY(groupCreated);
+    QCOMPARE((int)mgr->getNumberOfGroups(), 2);
+    QCOMPARE((int)mgr->getNumberOfEntries(), 2);
+
+    // Verify backup group was created
+    quint32 backupGroupId = mgr->getGroupId("Backup");
+    QVERIFY(backupGroupId != 0xFFFFFFFF);
+
+    // Backup entry again (group already exists)
+    groupCreated = false;
+    QVERIFY(mgr->backupEntry(originalEntry, &groupCreated));
+    QVERIFY(!groupCreated);  // Group already existed
+    QCOMPARE((int)mgr->getNumberOfGroups(), 2);
+    QCOMPARE((int)mgr->getNumberOfEntries(), 3);  // Now 3 entries (1 original + 2 backups)
+
+    delete mgr;
+}
+
+void TestPwManager::testGetGroupId()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add groups with different names
+    for (int i = 0; i < 3; ++i) {
+        PW_GROUP group;
+        std::memset(&group, 0, sizeof(PW_GROUP));
+        QByteArray nameBytes = QString("Group %1").arg(i).toUtf8();
+        group.pszGroupName = new char[nameBytes.size() + 1];
+        std::strcpy(group.pszGroupName, nameBytes.constData());
+        group.uGroupId = (i + 1) * 100;  // Use distinct IDs
+        PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+        group.tLastAccess = group.tCreation;
+        group.tLastMod = group.tCreation;
+        PwManager::getNeverExpireTime(&group.tExpire);
+        group.uImageId = 1;
+        QVERIFY(mgr->addGroup(&group));
+        delete[] group.pszGroupName;
+    }
+
+    // Test case-insensitive search
+    QCOMPARE(mgr->getGroupId("group 0"), (quint32)100);
+    QCOMPARE(mgr->getGroupId("GROUP 1"), (quint32)200);
+    QCOMPARE(mgr->getGroupId("GrOuP 2"), (quint32)300);
+
+    // Test exact match
+    QCOMPARE(mgr->getGroupId("Group 0"), (quint32)100);
+
+    // Test non-existent group
+    QCOMPARE(mgr->getGroupId("Non-existent"), (quint32)0xFFFFFFFF);
+
+    // Test empty string
+    QCOMPARE(mgr->getGroupId(""), (quint32)0xFFFFFFFF);
+
+    // Test getGroupIdByIndex
+    QCOMPARE(mgr->getGroupIdByIndex(0), (quint32)100);
+    QCOMPARE(mgr->getGroupIdByIndex(1), (quint32)200);
+    QCOMPARE(mgr->getGroupIdByIndex(2), (quint32)300);
+    QCOMPARE(mgr->getGroupIdByIndex(999), (quint32)0xFFFFFFFF);
+
+    delete mgr;
 }
 
 QTEST_MAIN(TestPwManager)
