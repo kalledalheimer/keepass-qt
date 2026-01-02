@@ -5,6 +5,7 @@
 #include "EntryModel.h"
 #include "../core/PwManager.h"
 #include "../core/PwStructs.h"
+#include "IconManager.h"
 
 #include <QString>
 #include <QIcon>
@@ -77,8 +78,7 @@ QVariant EntryModel::data(const QModelIndex &index, int role) const
 
     case Qt::DecorationRole:
         if (index.column() == ColumnTitle) {
-            // TODO: Return entry icon based on uImageId
-            return QVariant();
+            return IconManager::instance().getEntryIcon(entry->uImageId);
         }
         return QVariant();
 

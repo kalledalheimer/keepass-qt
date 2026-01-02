@@ -26,8 +26,21 @@ class AddEntryDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit AddEntryDialog(PwManager *pwManager, quint32 selectedGroupId = 0, QWidget *parent = nullptr);
+    enum Mode {
+        AddMode,
+        EditMode
+    };
+
+    // Constructor
+    // For AddMode: idValue is the selectedGroupId
+    // For EditMode: idValue is the entryIndex
+    explicit AddEntryDialog(PwManager *pwManager, Mode mode, quint32 idValue = 0, QWidget *parent = nullptr);
+
     ~AddEntryDialog() override = default;
+
+    // Get mode
+    Mode getMode() const { return m_mode; }
+    quint32 getEntryIndex() const { return m_entryIndex; }
 
     // Getters for dialog results
     QString getTitle() const;
@@ -50,6 +63,7 @@ private:
     void setupUi();
     bool validateInput();
     void populateGroupCombo();
+    void populateFromEntry(PW_ENTRY *entry);
     QString generateRandomPassword();
 
     // UI components
@@ -69,7 +83,9 @@ private:
 
     // Data
     PwManager *m_pwManager;
-    quint32 m_selectedGroupId;
+    Mode m_mode;
+    quint32 m_selectedGroupId;  // For Add mode
+    quint32 m_entryIndex;       // For Edit mode
 };
 
 #endif // ADDENTRYDIALOG_H

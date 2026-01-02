@@ -647,7 +647,7 @@ void MainWindow::onEditAddEntry()
     }
 
     // Show Add Entry dialog
-    AddEntryDialog dialog(m_pwManager, selectedGroupId, this);
+    AddEntryDialog dialog(m_pwManager, AddEntryDialog::AddMode, selectedGroupId, this);
     if (dialog.exec() != QDialog::Accepted) {
         m_statusLabel->setText(tr("Add entry cancelled"));
         return;
@@ -738,17 +738,329 @@ void MainWindow::onEditAddEntry()
 
 void MainWindow::onEditEditEntry()
 {
-    // TODO: Implement
+    // Get currently selected entry
+    QModelIndex currentIndex = m_entryView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Edit Entry"),
+                               tr("Please select an entry to edit."));
+        return;
+    }
+
+    // Get the entry from the model
+    PW_ENTRY *entry = m_entryModel->getEntry(currentIndex);
+    if (!entry) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to get entry data."));
+        return;
+    }
+
+    // Find the entry index in PwManager
+    quint32 entryIndex = 0;
+    quint32 numEntries = m_pwManager->getNumberOfEntries();
+    bool found = false;
+
+    for (quint32 i = 0; i < numEntries; ++i) {
+        if (m_pwManager->getEntry(i) == entry) {
+            entryIndex = i;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to locate entry."));
+        return;
+    }
+
+    // Show Edit Entry dialog
+    AddEntryDialog dialog(m_pwManager, AddEntryDialog::EditMode, entryIndex, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("Edit cancelled"));
+        return;
+    }
+
+    // Get updated values from dialog
+    QString title = dialog.getTitle();
+    QString username = dialog.getUsername();
+    QString password = dialog.getPassword();
+    QString url = dialog.getUrl();
+    QString notes = dialog.getNotes();
+    quint32 groupId = dialog.getGroupId();
+    quint32 iconId = dialog.getIconId();
+    PW_TIME expireTime = dialog.getExpirationTime();
+
+    // Update entry with setEntry()
+    PW_ENTRY entryTemplate;
+    std::memset(&entryTemplate, 0, sizeof(PW_ENTRY));
+
+    // Copy UUID and creation time from original entry
+    std::memcpy(entryTemplate.uuid, entry->uuid, 16);
+    entryTemplate.tCreation = entry->tCreation;
+
+    // Update modification and access times
+    QDateTime now = QDateTime::currentDateTime();
+    PwUtil::dateTimeToPwTime(now, &entryTemplate.tLastMod);
+    PwUtil::dateTimeToPwTime(now, &entryTemplate.tLastAccess);
+    entryTemplate.tExpire = expireTime;
+
+    // Set strings (must allocate memory)
+    QByteArray titleUtf8 = title.toUtf8();
+    entryTemplate.pszTitle = new char[titleUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszTitle, titleUtf8.constData());
+
+    QByteArray usernameUtf8 = username.toUtf8();
+    entryTemplate.pszUserName = new char[usernameUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszUserName, usernameUtf8.constData());
+
+    QByteArray passwordUtf8 = password.toUtf8();
+    entryTemplate.pszPassword = new char[passwordUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszPassword, passwordUtf8.constData());
+    entryTemplate.uPasswordLen = passwordUtf8.size();
+
+    QByteArray urlUtf8 = url.toUtf8();
+    entryTemplate.pszURL = new char[urlUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszURL, urlUtf8.constData());
+
+    QByteArray notesUtf8 = notes.toUtf8();
+    entryTemplate.pszAdditional = new char[notesUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszAdditional, notesUtf8.constData());
+
+    // Copy binary data from original entry
+    if (entry->pszBinaryDesc && entry->pBinaryData && entry->uBinaryDataLen > 0) {
+        size_t descLen = std::strlen(entry->pszBinaryDesc);
+        entryTemplate.pszBinaryDesc = new char[descLen + 1];
+        std::strcpy(entryTemplate.pszBinaryDesc, entry->pszBinaryDesc);
+
+        entryTemplate.uBinaryDataLen = entry->uBinaryDataLen;
+        entryTemplate.pBinaryData = new BYTE[entry->uBinaryDataLen];
+        std::memcpy(entryTemplate.pBinaryData, entry->pBinaryData, entry->uBinaryDataLen);
+    } else {
+        entryTemplate.pszBinaryDesc = new char[1];
+        entryTemplate.pszBinaryDesc[0] = '\0';
+        entryTemplate.pBinaryData = nullptr;
+        entryTemplate.uBinaryDataLen = 0;
+    }
+
+    // Set other properties
+    entryTemplate.uGroupId = groupId;
+    entryTemplate.uImageId = iconId;
+
+    // Update entry in database
+    bool success = m_pwManager->setEntry(entryIndex, &entryTemplate);
+
+    // Clean up allocated memory
+    delete[] entryTemplate.pszTitle;
+    delete[] entryTemplate.pszUserName;
+    delete[] entryTemplate.pszPassword;
+    delete[] entryTemplate.pszURL;
+    delete[] entryTemplate.pszAdditional;
+    delete[] entryTemplate.pszBinaryDesc;
+    if (entryTemplate.pBinaryData) {
+        delete[] entryTemplate.pBinaryData;
+    }
+
+    if (!success) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to update entry."));
+        m_statusLabel->setText(tr("Failed to update entry"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    m_statusLabel->setText(tr("Entry '%1' updated successfully").arg(title));
 }
 
 void MainWindow::onEditDeleteEntry()
 {
-    // TODO: Implement
+    // Check if database is open
+    if (!m_pwManager || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected entry
+    QModelIndex currentIndex = m_entryView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Delete Entry"),
+                               tr("Please select an entry to delete."));
+        return;
+    }
+
+    PW_ENTRY *entry = m_entryModel->getEntry(currentIndex);
+    if (!entry) {
+        return;
+    }
+
+    // Get entry title for confirmation dialog
+    QString title = QString::fromUtf8(entry->pszTitle);
+    if (title.isEmpty()) {
+        title = tr("(Untitled)");
+    }
+
+    // Confirm deletion
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        tr("Delete Entry"),
+        tr("Are you sure you want to delete the entry \"%1\"?\n\nThis operation cannot be undone.").arg(title),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply != QMessageBox::Yes) {
+        m_statusLabel->setText(tr("Delete cancelled"));
+        return;
+    }
+
+    // Find entry index in PwManager
+    quint32 entryIndex = 0;
+    bool found = false;
+    quint32 numEntries = m_pwManager->getNumberOfEntries();
+
+    for (quint32 i = 0; i < numEntries; ++i) {
+        if (m_pwManager->getEntry(i) == entry) {
+            entryIndex = i;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to find entry in database."));
+        m_statusLabel->setText(tr("Failed to delete entry"));
+        return;
+    }
+
+    // Delete entry from database
+    bool success = m_pwManager->deleteEntry(entryIndex);
+
+    if (!success) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to delete entry."));
+        m_statusLabel->setText(tr("Failed to delete entry"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    m_statusLabel->setText(tr("Entry '%1' deleted successfully").arg(title));
 }
 
 void MainWindow::onEditDeleteGroup()
 {
-    // TODO: Implement
+    // Check if database is open
+    if (!m_pwManager || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected group
+    QModelIndex currentIndex = m_groupView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Delete Group"),
+                               tr("Please select a group to delete."));
+        return;
+    }
+
+    PW_GROUP *group = m_groupModel->getGroup(currentIndex);
+    if (!group) {
+        return;
+    }
+
+    // Get group name for confirmation dialog
+    QString groupName = QString::fromUtf8(group->pszGroupName);
+    if (groupName.isEmpty()) {
+        groupName = tr("(Untitled)");
+    }
+
+    // Prevent deletion of top-level group if only one exists
+    quint32 numGroups = m_pwManager->getNumberOfGroups();
+    if (numGroups <= 1) {
+        QMessageBox::warning(this, tr("Delete Group"),
+                           tr("Cannot delete the only remaining group."));
+        return;
+    }
+
+    // Check how many entries are in this group
+    quint32 numEntries = m_pwManager->getNumberOfItemsInGroupN(group->uGroupId);
+    bool createBackup = false;
+
+    // If group has entries, ask about backup
+    if (numEntries > 0) {
+        QString message;
+        if (numEntries == 1) {
+            message = tr("The group \"%1\" contains 1 entry.\n\n"
+                       "Do you want to create a backup of the entry before deleting the group?\n\n"
+                       "Yes = Move entry to backup group\n"
+                       "No = Delete entry permanently\n"
+                       "Cancel = Don't delete the group").arg(groupName);
+        } else {
+            message = tr("The group \"%1\" contains %2 entries.\n\n"
+                       "Do you want to create a backup of the entries before deleting the group?\n\n"
+                       "Yes = Move entries to backup group\n"
+                       "No = Delete entries permanently\n"
+                       "Cancel = Don't delete the group").arg(groupName).arg(numEntries);
+        }
+
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this,
+            tr("Delete Group"),
+            message,
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
+            QMessageBox::Cancel
+        );
+
+        if (reply == QMessageBox::Cancel) {
+            m_statusLabel->setText(tr("Delete cancelled"));
+            return;
+        }
+
+        createBackup = (reply == QMessageBox::Yes);
+    } else {
+        // Empty group - simple confirmation
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this,
+            tr("Delete Group"),
+            tr("Are you sure you want to delete the group \"%1\"?\n\nThis operation cannot be undone.").arg(groupName),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+
+        if (reply != QMessageBox::Yes) {
+            m_statusLabel->setText(tr("Delete cancelled"));
+            return;
+        }
+    }
+
+    // Delete group from database
+    bool success = m_pwManager->deleteGroupById(group->uGroupId, createBackup);
+
+    if (!success) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to delete group."));
+        m_statusLabel->setText(tr("Failed to delete group"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+
+    if (numEntries > 0 && createBackup) {
+        m_statusLabel->setText(tr("Group '%1' deleted (%2 entries backed up)").arg(groupName).arg(numEntries));
+    } else if (numEntries > 0) {
+        m_statusLabel->setText(tr("Group '%1' and %2 entries deleted").arg(groupName).arg(numEntries));
+    } else {
+        m_statusLabel->setText(tr("Group '%1' deleted successfully").arg(groupName));
+    }
 }
 
 void MainWindow::onEditFind()
@@ -811,7 +1123,38 @@ void MainWindow::onHelpAbout()
 
 void MainWindow::onGroupSelectionChanged()
 {
-    // TODO: Update entry view to show entries from selected group
+    if (!m_pwManager || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected group
+    QModelIndex currentIndex = m_groupView->currentIndex();
+
+    if (currentIndex.isValid()) {
+        PW_GROUP *group = m_groupModel->getGroup(currentIndex);
+        if (group) {
+            // Filter entries to show only those in selected group
+            m_entryModel->setGroupFilter(group->uGroupId);
+
+            // Update status bar
+            quint32 numEntries = m_pwManager->getNumberOfItemsInGroupN(group->uGroupId);
+            QString groupName = QString::fromUtf8(group->pszGroupName);
+            if (numEntries == 1) {
+                m_statusLabel->setText(tr("Group '%1': 1 entry").arg(groupName));
+            } else {
+                m_statusLabel->setText(tr("Group '%1': %2 entries").arg(groupName).arg(numEntries));
+            }
+        } else {
+            // No valid group - clear filter
+            m_entryModel->clearGroupFilter();
+            m_statusLabel->setText(tr("Ready"));
+        }
+    } else {
+        // No selection - show all entries
+        m_entryModel->clearGroupFilter();
+        m_statusLabel->setText(tr("Ready"));
+    }
+
     updateActions();
 }
 
@@ -823,8 +1166,8 @@ void MainWindow::onEntrySelectionChanged()
 void MainWindow::onEntryDoubleClicked(const QModelIndex &index)
 {
     Q_UNUSED(index);
-    // TODO: Open entry view/edit dialog
-    QMessageBox::information(this, tr("Not Implemented"), tr("Double-click entry editing will be implemented next"));
+    // Open edit entry dialog
+    onEditEditEntry();
 }
 
 bool MainWindow::openDatabase(const QString &filePath)

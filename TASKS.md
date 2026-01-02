@@ -55,9 +55,46 @@ Last updated: 2025-12-24
   - [x] Delete operations (Entry and Group with backup option)
   - [x] Connect group selection to entry filtering
 
-**Goal:** Functional GUI that can create, open, view, and edit KDB databases
+**Goal:** Functional GUI that can create, open, view, and edit KDB databases ✅
 
-**Target:** End of Week 1 (5 days)
+---
+
+## 🔴 High Priority - Phase 4: Advanced GUI
+
+- [ ] Implement Search/Find functionality (#7)
+  - Find dialog with all search options
+  - Search in: Title, URL, UUID, Username, Notes, Password, Group name
+  - Regular expression support
+  - Case sensitive, exclude backups, exclude expired options
+  - Quick find combo box in toolbar
+
+- [ ] Implement Password Generator (#8)
+  - Password Generator dialog (simple mode)
+  - Character sets: uppercase, lowercase, digits, special chars
+  - Password length control
+  - Exclude look-alike characters option
+  - Password quality indicator
+
+- [ ] Implement Copy Username/Password operations (#9)
+  - Copy Username to clipboard (Edit menu + toolbar)
+  - Copy Password to clipboard (Edit menu + toolbar)
+  - Clipboard auto-clear after timeout
+
+- [ ] Implement Database Settings dialog (#10)
+  - Database name and description
+  - Default username
+  - Database color
+  - Key transformation rounds (adjustable)
+  - Encryption algorithm selection (AES/Twofish)
+
+- [ ] Implement Tools > Options dialog (#11)
+  - Security tab (lock settings, secure edits)
+  - Interface tab (grid lines, fonts, auto-resize)
+  - Advanced tab (auto-save, backup, startup options)
+
+**Goal:** Complete essential password management features
+
+**Target:** Phase 4 completion
 
 ---
 

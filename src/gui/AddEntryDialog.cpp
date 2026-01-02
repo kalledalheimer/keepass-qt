@@ -14,19 +14,35 @@
 #include <QDateTime>
 #include <QRandomGenerator>
 
-AddEntryDialog::AddEntryDialog(PwManager *pwManager, quint32 selectedGroupId, QWidget *parent)
+AddEntryDialog::AddEntryDialog(PwManager *pwManager, Mode mode, quint32 idValue, QWidget *parent)
     : QDialog(parent)
     , m_pwManager(pwManager)
-    , m_selectedGroupId(selectedGroupId)
+    , m_mode(mode)
+    , m_selectedGroupId(mode == AddMode ? idValue : 0)
+    , m_entryIndex(mode == EditMode ? idValue : 0)
 {
     setupUi();
+    setWindowTitle(mode == AddMode ? tr("Add Entry") : tr("Edit Entry"));
     populateGroupCombo();
 
-    // Set default values
-    m_iconIdSpin->setValue(0);  // Default entry icon
-    m_usernameEdit->setText("");  // TODO: Get default username from database property
-    m_passwordEdit->setText(generateRandomPassword());
-    m_repeatPasswordEdit->setText(m_passwordEdit->text());
+    if (mode == AddMode) {
+        // Set default values for new entry
+        m_iconIdSpin->setValue(0);  // Default entry icon
+        m_usernameEdit->setText("");  // TODO: Get default username from database property
+        m_passwordEdit->setText(generateRandomPassword());
+        m_repeatPasswordEdit->setText(m_passwordEdit->text());
+
+        // Initial state
+        m_expirationDateTime->setEnabled(false);
+    } else {
+        // EditMode: Load entry data
+        if (m_pwManager && idValue < m_pwManager->getNumberOfEntries()) {
+            PW_ENTRY *entry = m_pwManager->getEntry(idValue);
+            if (entry) {
+                populateFromEntry(entry);
+            }
+        }
+    }
 
     // Connect signals
     connect(m_passwordEdit, &QLineEdit::textChanged, this, &AddEntryDialog::onPasswordChanged);
@@ -36,14 +52,11 @@ AddEntryDialog::AddEntryDialog(PwManager *pwManager, quint32 selectedGroupId, QW
     connect(m_okButton, &QPushButton::clicked, this, &AddEntryDialog::validateAndAccept);
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
 
-    // Initial state
-    m_expirationDateTime->setEnabled(false);
     onPasswordChanged();  // Update validation state
 }
 
 void AddEntryDialog::setupUi()
 {
-    setWindowTitle(tr("Add Entry"));
     setModal(true);
     setMinimumWidth(500);
 
@@ -182,6 +195,57 @@ void AddEntryDialog::populateGroupCombo()
         m_groupCombo->setCurrentIndex(selectedIndex);
     } else if (m_groupCombo->count() > 0) {
         m_groupCombo->setCurrentIndex(0);  // Select first valid group
+    }
+}
+
+void AddEntryDialog::populateFromEntry(PW_ENTRY *entry)
+{
+    if (!entry) {
+        return;
+    }
+
+    // Unlock password for editing
+    m_pwManager->unlockEntryPassword(entry);
+
+    // Set all fields from entry
+    m_titleEdit->setText(QString::fromUtf8(entry->pszTitle));
+    m_usernameEdit->setText(QString::fromUtf8(entry->pszUserName));
+    m_passwordEdit->setText(QString::fromUtf8(entry->pszPassword));
+    m_repeatPasswordEdit->setText(QString::fromUtf8(entry->pszPassword));
+    m_urlEdit->setText(QString::fromUtf8(entry->pszURL));
+    m_notesEdit->setPlainText(QString::fromUtf8(entry->pszAdditional));
+    m_iconIdSpin->setValue(entry->uImageId);
+
+    // Lock password again
+    m_pwManager->lockEntryPassword(entry);
+
+    // Set group selection
+    for (int i = 0; i < m_groupCombo->count(); ++i) {
+        if (m_groupCombo->itemData(i).toUInt() == entry->uGroupId) {
+            m_groupCombo->setCurrentIndex(i);
+            break;
+        }
+    }
+
+    // Set expiration
+    PW_TIME neverExpire;
+    PwManager::getNeverExpireTime(&neverExpire);
+
+    // Check if entry expires (not equal to never-expire time)
+    // Compare all fields of PW_TIME
+    bool expires = !(entry->tExpire.shYear == neverExpire.shYear &&
+                     entry->tExpire.btMonth == neverExpire.btMonth &&
+                     entry->tExpire.btDay == neverExpire.btDay &&
+                     entry->tExpire.btHour == neverExpire.btHour &&
+                     entry->tExpire.btMinute == neverExpire.btMinute &&
+                     entry->tExpire.btSecond == neverExpire.btSecond);
+
+    m_expiresCheck->setChecked(expires);
+    m_expirationDateTime->setEnabled(expires);
+
+    if (expires) {
+        QDateTime expireDateTime = PwUtil::pwTimeToDateTime(&entry->tExpire);
+        m_expirationDateTime->setDateTime(expireDateTime);
     }
 }
 

@@ -1454,6 +1454,37 @@ quint32 PwManager::getGroupByIdN(quint32 idGroup) const
     return static_cast<quint32>(-1);
 }
 
+quint32 PwManager::getGroupId(const QString& groupName) const
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:733-744
+    // Returns the group ID for a group with the given name (case-insensitive)
+
+    if (groupName.isEmpty()) {
+        return DWORD_MAX;
+    }
+
+    for (quint32 i = 0; i < m_numGroups; ++i) {
+        QString currentName = QString::fromUtf8(m_pGroups[i].pszGroupName);
+        if (currentName.compare(groupName, Qt::CaseInsensitive) == 0) {
+            return m_pGroups[i].uGroupId;
+        }
+    }
+
+    return DWORD_MAX;
+}
+
+quint32 PwManager::getGroupIdByIndex(quint32 uGroupIndex) const
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:746-750
+    // Returns the group ID for a group at the specified index
+
+    if (uGroupIndex >= m_numGroups) {
+        return DWORD_MAX;
+    }
+
+    return m_pGroups[uGroupIndex].uGroupId;
+}
+
 PW_ENTRY* PwManager::getLastEditedEntry()
 {
     return m_pLastEditedEntry;
@@ -1729,19 +1760,154 @@ bool PwManager::addEntry(const PW_ENTRY* pTemplate)
     return setEntry(m_numEntries - 1, &entryCopy);
 }
 
+bool PwManager::backupEntry(const PW_ENTRY* pe, bool* pbGroupCreated)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:1562-1593
+    // Creates a backup copy of an entry in the "Backup" group
+
+    if (pe == nullptr) {
+        return false;
+    }
+
+    if (pbGroupCreated != nullptr) {
+        *pbGroupCreated = false;
+    }
+
+    // Check if Backup group exists
+    quint32 dwGroupId = getGroupId("Backup");
+    if (dwGroupId == DWORD_MAX) {
+        // Create Backup group
+        PW_GROUP pwg;
+        std::memset(&pwg, 0, sizeof(PW_GROUP));
+        pwg.pszGroupName = const_cast<char*>("Backup");
+
+        QDateTime now = QDateTime::currentDateTime();
+        PwUtil::dateTimeToPwTime(now, &pwg.tCreation);
+        pwg.tLastAccess = pwg.tCreation;
+        pwg.tLastMod = pwg.tCreation;
+        PwManager::getNeverExpireTime(&pwg.tExpire);
+        pwg.uImageId = 4;  // Icon for backup group
+
+        if (!addGroup(&pwg)) {
+            return false;
+        }
+
+        if (pbGroupCreated != nullptr) {
+            *pbGroupCreated = true;
+        }
+
+        dwGroupId = getGroupId("Backup");
+    }
+
+    if (dwGroupId == DWORD_MAX) {
+        return false;
+    }
+
+    // Create backup copy of entry
+    PW_ENTRY pwe = *pe;
+    QDateTime now = QDateTime::currentDateTime();
+    PwUtil::dateTimeToPwTime(now, &pwe.tLastMod);
+    pwe.uGroupId = dwGroupId;
+    std::memset(&pwe.uuid, 0, 16);  // Zero UUID so new one is generated
+
+    return addEntry(&pwe);
+}
+
 bool PwManager::deleteEntry(quint32 dwIndex)
 {
-    Q_UNUSED(dwIndex);
-    // TODO: Implement
-    return false;
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:861-883
+    // Deletes an entry at the specified index from the database
+
+    // Validate index
+    if (dwIndex >= m_numEntries) {
+        return false;
+    }
+
+    // Free all dynamically allocated memory for this entry
+    delete[] m_pEntries[dwIndex].pszTitle;
+    delete[] m_pEntries[dwIndex].pszURL;
+    delete[] m_pEntries[dwIndex].pszUserName;
+    delete[] m_pEntries[dwIndex].pszPassword;
+    delete[] m_pEntries[dwIndex].pszAdditional;
+    delete[] m_pEntries[dwIndex].pszBinaryDesc;
+    delete[] m_pEntries[dwIndex].pBinaryData;
+
+    // If not the last entry, shift all entries after it down by one position
+    if (dwIndex != (m_numEntries - 1)) {
+        for (quint32 i = dwIndex; i < (m_numEntries - 1); ++i) {
+            m_pEntries[i] = m_pEntries[i + 1];
+        }
+    }
+
+    // Securely erase the last entry's memory
+    MemUtil::mem_erase(&m_pEntries[m_numEntries - 1], sizeof(PW_ENTRY));
+    --m_numEntries;
+
+    return true;
 }
 
 bool PwManager::deleteGroupById(quint32 uGroupId, bool bCreateBackupEntries)
 {
-    Q_UNUSED(uGroupId);
-    Q_UNUSED(bCreateBackupEntries);
-    // TODO: Implement
-    return false;
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:885-930
+    // Deletes a group by ID and optionally backs up its entries
+
+    // Validate that group exists
+    if (getGroupById(uGroupId) == nullptr) {
+        return false;
+    }
+
+    // Get backup group IDs to avoid backing up backup entries
+    quint32 dwInvGroup1 = getGroupId("Backup");
+    quint32 dwInvGroup2 = getGroupId("Backup (from Templates)");
+
+    // Delete all entries in this group
+    if (m_numEntries > 0) {
+        quint32 i = 0;
+        while (true) {
+            PW_ENTRY *p = &m_pEntries[i];
+            if (p->uGroupId == uGroupId) {
+                // Backup entry if requested and not already in a backup group
+                if (bCreateBackupEntries &&
+                    (p->uGroupId != dwInvGroup1) &&
+                    (p->uGroupId != dwInvGroup2)) {
+                    unlockEntryPassword(p);
+                    backupEntry(p, nullptr);
+                    lockEntryPassword(p);
+                }
+
+                // Delete the entry
+                deleteEntry(i);
+                --i;  // Adjust index since we just shifted entries down
+            }
+
+            if (++i >= m_numEntries) break;
+        }
+    }
+
+    // Find the group index
+    quint32 inx = getGroupByIdN(uGroupId);
+    if (inx == DWORD_MAX) {
+        return false;
+    }
+
+    // Free dynamically allocated group name
+    delete[] m_pGroups[inx].pszGroupName;
+
+    // If not the last group, shift all groups down by one position
+    if (inx != (m_numGroups - 1)) {
+        for (quint32 i = inx; i < (m_numGroups - 1); ++i) {
+            m_pGroups[i] = m_pGroups[i + 1];
+        }
+    }
+
+    // Securely erase the last group's memory
+    MemUtil::mem_erase(&m_pGroups[m_numGroups - 1], sizeof(PW_GROUP));
+    --m_numGroups;
+
+    // Fix group tree hierarchy
+    fixGroupTree();
+
+    return true;
 }
 
 void PwManager::sortGroup(quint32 idGroup, quint32 dwSortByField)
@@ -1758,7 +1924,26 @@ void PwManager::sortGroupList()
 
 void PwManager::fixGroupTree()
 {
-    // TODO: Implement - will fix group tree hierarchy
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp:1420-1432
+    // Fixes group tree hierarchy to prevent inconsistencies
+    // Ensures first group is root and each group level increases by at most 1
+
+    if (m_numGroups == 0) {
+        return;
+    }
+
+    // First group must be root
+    m_pGroups[0].usLevel = 0;
+
+    quint16 usLastLevel = 0;
+    for (quint32 i = 0; i < m_numGroups; ++i) {
+        // Ensure level doesn't jump by more than 1
+        if (m_pGroups[i].usLevel > static_cast<quint16>(usLastLevel + 1)) {
+            m_pGroups[i].usLevel = static_cast<quint16>(usLastLevel + 1);
+        }
+
+        usLastLevel = m_pGroups[i].usLevel;
+    }
 }
 
 // Helper function to convert UTF-8 to QString (and allocate TCHAR string)
