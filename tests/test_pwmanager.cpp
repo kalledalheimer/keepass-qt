@@ -17,6 +17,7 @@
 #include "../src/core/PwStructs.h"
 #include "../src/core/util/Random.h"
 #include "../src/core/util/PwUtil.h"
+#include "../src/core/PasswordGenerator.h"
 
 class TestPwManager : public QObject
 {
@@ -36,6 +37,20 @@ private slots:
     void testDeleteGroup();
     void testBackupEntry();
     void testGetGroupId();
+    void testFind();
+    void testFindAll();
+    void testFindExcludeBackups();
+    void testFindExcludeExpired();
+
+    // Password Generator tests
+    void testPasswordGeneratorBasic();
+    void testPasswordGeneratorCharSets();
+    void testPasswordGeneratorExclusions();
+    void testPasswordGeneratorNoRepeat();
+    void testPasswordGeneratorEntropy();
+    void testPasswordGeneratorQuality();
+    void testPasswordGeneratorSettingsValidation();
+
     void testSaveAndOpenEmptyDatabase();
     void testSaveAndOpenDatabaseWithData();
     void testPasswordEncryption();
@@ -756,6 +771,686 @@ void TestPwManager::testGetGroupId()
     QCOMPARE(mgr->getGroupIdByIndex(999), (quint32)0xFFFFFFFF);
 
     delete mgr;
+}
+
+void TestPwManager::testFind()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add a test group
+    PW_GROUP group;
+    std::memset(&group, 0, sizeof(PW_GROUP));
+    group.pszGroupName = const_cast<char*>("Internet");
+    group.uGroupId = 1;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+    group.tLastAccess = group.tCreation;
+    group.tLastMod = group.tCreation;
+    PwManager::getNeverExpireTime(&group.tExpire);
+    group.uImageId = 1;
+    QVERIFY(mgr->addGroup(&group));
+
+    // Add test entries
+    PW_ENTRY entry1;
+    std::memset(&entry1, 0, sizeof(PW_ENTRY));
+    entry1.uGroupId = 1;
+    entry1.uImageId = 0;
+    entry1.pszTitle = const_cast<char*>("Gmail");
+    entry1.pszUserName = const_cast<char*>("user@gmail.com");
+    entry1.pszPassword = const_cast<char*>("SecretPass123");
+    entry1.pszURL = const_cast<char*>("https://mail.google.com");
+    entry1.pszAdditional = const_cast<char*>("My email account");
+    entry1.pszBinaryDesc = const_cast<char*>("");
+    entry1.pBinaryData = nullptr;
+    entry1.uBinaryDataLen = 0;
+    Random::fillBuffer(entry1.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry1.tCreation);
+    entry1.tLastAccess = entry1.tCreation;
+    entry1.tLastMod = entry1.tCreation;
+    PwManager::getNeverExpireTime(&entry1.tExpire);
+    QVERIFY(mgr->addEntry(&entry1));
+
+    PW_ENTRY entry2;
+    std::memset(&entry2, 0, sizeof(PW_ENTRY));
+    entry2.uGroupId = 1;
+    entry2.uImageId = 0;
+    entry2.pszTitle = const_cast<char*>("GitHub");
+    entry2.pszUserName = const_cast<char*>("developer");
+    entry2.pszPassword = const_cast<char*>("CodePass456");
+    entry2.pszURL = const_cast<char*>("https://github.com");
+    entry2.pszAdditional = const_cast<char*>("Development repository");
+    entry2.pszBinaryDesc = const_cast<char*>("");
+    entry2.pBinaryData = nullptr;
+    entry2.uBinaryDataLen = 0;
+    Random::fillBuffer(entry2.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry2.tCreation);
+    entry2.tLastAccess = entry2.tCreation;
+    entry2.tLastMod = entry2.tCreation;
+    PwManager::getNeverExpireTime(&entry2.tExpire);
+    QVERIFY(mgr->addEntry(&entry2));
+
+    PW_ENTRY entry3;
+    std::memset(&entry3, 0, sizeof(PW_ENTRY));
+    entry3.uGroupId = 1;
+    entry3.uImageId = 0;
+    entry3.pszTitle = const_cast<char*>("Banking");
+    entry3.pszUserName = const_cast<char*>("john.doe");
+    entry3.pszPassword = const_cast<char*>("BankPass789");
+    entry3.pszURL = const_cast<char*>("https://bank.example.com");
+    entry3.pszAdditional = const_cast<char*>("Online banking");
+    entry3.pszBinaryDesc = const_cast<char*>("");
+    entry3.pBinaryData = nullptr;
+    entry3.uBinaryDataLen = 0;
+    Random::fillBuffer(entry3.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry3.tCreation);
+    entry3.tLastAccess = entry3.tCreation;
+    entry3.tLastMod = entry3.tCreation;
+    PwManager::getNeverExpireTime(&entry3.tExpire);
+    QVERIFY(mgr->addEntry(&entry3));
+
+    QCOMPARE((int)mgr->getNumberOfEntries(), 3);
+
+    // Test 1: Search by title (case-insensitive)
+    QString error;
+    quint32 result = mgr->find("gmail", false, PWMF_TITLE, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)0);  // First entry
+
+    // Test 2: Search by title (case-sensitive, should fail)
+    result = mgr->find("gmail", true, PWMF_TITLE, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result == 0xFFFFFFFF);  // Not found
+
+    // Test 3: Search by title (case-sensitive, exact match)
+    result = mgr->find("Gmail", true, PWMF_TITLE, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)0);
+
+    // Test 4: Search by username
+    result = mgr->find("developer", false, PWMF_USER, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)1);  // Second entry
+
+    // Test 5: Search by URL
+    result = mgr->find("github", false, PWMF_URL, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)1);
+
+    // Test 6: Search in notes
+    result = mgr->find("email", false, PWMF_ADDITIONAL, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)0);
+
+    // Test 7: Search in multiple fields
+    result = mgr->find("banking", false, PWMF_TITLE | PWMF_ADDITIONAL, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)2);
+
+    // Test 8: Search with start index
+    result = mgr->find("http", false, PWMF_URL, 1, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)1);  // Should find GitHub (skips Gmail at index 0)
+
+    // Test 9: Search not found
+    result = mgr->find("nonexistent", false, PWMF_TITLE, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result == 0xFFFFFFFF);
+
+    // Test 10: Test regex search (if supported)
+    result = mgr->find("G.*l", false, PWMF_TITLE | PWMS_REGEX, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)0);  // Matches "Gmail"
+
+    // Test 11: Test findEx (wrapper)
+    result = mgr->findEx("github", false, PWMF_URL, 0, &error);
+    QVERIFY(result != 0xFFFFFFFF);
+    QCOMPARE(result, (quint32)1);
+
+    // Test 12: Empty search string
+    result = mgr->find("", false, PWMF_TITLE, 0, 0xFFFFFFFF, &error);
+    QVERIFY(result == 0xFFFFFFFF);
+    QVERIFY(!error.isEmpty());  // Should have error message
+
+    delete mgr;
+}
+
+void TestPwManager::testFindAll()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add a test group
+    PW_GROUP group;
+    std::memset(&group, 0, sizeof(PW_GROUP));
+    group.pszGroupName = const_cast<char*>("Internet");
+    group.uGroupId = 1;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+    group.tLastAccess = group.tCreation;
+    group.tLastMod = group.tCreation;
+    PwManager::getNeverExpireTime(&group.tExpire);
+    group.uImageId = 1;
+    QVERIFY(mgr->addGroup(&group));
+
+    // Add multiple test entries with "test" in different fields
+    for (int i = 0; i < 5; ++i) {
+        PW_ENTRY entry;
+        std::memset(&entry, 0, sizeof(PW_ENTRY));
+        entry.uGroupId = 1;
+        entry.uImageId = 0;
+
+        // Mix of titles
+        if (i % 2 == 0) {
+            entry.pszTitle = const_cast<char*>("Test Entry");
+        } else {
+            entry.pszTitle = const_cast<char*>("Other Entry");
+        }
+
+        entry.pszUserName = const_cast<char*>("user");
+        entry.pszPassword = const_cast<char*>("password");
+        entry.pszURL = const_cast<char*>("http://example.com");
+
+        if (i == 2) {
+            entry.pszAdditional = const_cast<char*>("Testing notes");
+        } else {
+            entry.pszAdditional = const_cast<char*>("notes");
+        }
+
+        entry.pszBinaryDesc = const_cast<char*>("");
+        entry.pBinaryData = nullptr;
+        entry.uBinaryDataLen = 0;
+        Random::fillBuffer(entry.uuid, 16);
+        PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry.tCreation);
+        entry.tLastAccess = entry.tCreation;
+        entry.tLastMod = entry.tCreation;
+        PwManager::getNeverExpireTime(&entry.tExpire);
+        QVERIFY(mgr->addEntry(&entry));
+    }
+
+    QCOMPARE((int)mgr->getNumberOfEntries(), 5);
+
+    // Test findAll: should find all entries with "test" in title or notes
+    QString error;
+    QList<quint32> results = mgr->findAll("test", false, PWMF_TITLE | PWMF_ADDITIONAL,
+                                          false, false, &error);
+
+    // Should find: entries 0, 2, 4 (with "Test Entry" title)
+    // Entry 2 also has "Testing notes" but appears only once in results
+    QCOMPARE(results.count(), 3);  // Entries at indices 0, 2, 4
+    QVERIFY(results.contains(0));
+    QVERIFY(results.contains(2));
+    QVERIFY(results.contains(4));
+
+    // Test findAll with regex
+    results = mgr->findAll("Entry$", false, PWMF_TITLE | PWMS_REGEX,
+                          false, false, &error);
+    QCOMPARE(results.count(), 5);  // All entries end with "Entry"
+
+    delete mgr;
+}
+
+void TestPwManager::testFindExcludeBackups()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add normal group
+    PW_GROUP group;
+    std::memset(&group, 0, sizeof(PW_GROUP));
+    group.pszGroupName = const_cast<char*>("Internet");
+    group.uGroupId = 1;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+    group.tLastAccess = group.tCreation;
+    group.tLastMod = group.tCreation;
+    PwManager::getNeverExpireTime(&group.tExpire);
+    group.uImageId = 1;
+    QVERIFY(mgr->addGroup(&group));
+
+    // Add Backup group
+    PW_GROUP backupGroup;
+    std::memset(&backupGroup, 0, sizeof(PW_GROUP));
+    backupGroup.pszGroupName = const_cast<char*>("Backup");
+    backupGroup.uGroupId = 2;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &backupGroup.tCreation);
+    backupGroup.tLastAccess = backupGroup.tCreation;
+    backupGroup.tLastMod = backupGroup.tCreation;
+    PwManager::getNeverExpireTime(&backupGroup.tExpire);
+    backupGroup.uImageId = 4;
+    QVERIFY(mgr->addGroup(&backupGroup));
+
+    // Add entry in normal group
+    PW_ENTRY entry1;
+    std::memset(&entry1, 0, sizeof(PW_ENTRY));
+    entry1.uGroupId = 1;
+    entry1.uImageId = 0;
+    entry1.pszTitle = const_cast<char*>("Test Entry");
+    entry1.pszUserName = const_cast<char*>("user");
+    entry1.pszPassword = const_cast<char*>("password");
+    entry1.pszURL = const_cast<char*>("http://example.com");
+    entry1.pszAdditional = const_cast<char*>("notes");
+    entry1.pszBinaryDesc = const_cast<char*>("");
+    entry1.pBinaryData = nullptr;
+    entry1.uBinaryDataLen = 0;
+    Random::fillBuffer(entry1.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry1.tCreation);
+    entry1.tLastAccess = entry1.tCreation;
+    entry1.tLastMod = entry1.tCreation;
+    PwManager::getNeverExpireTime(&entry1.tExpire);
+    QVERIFY(mgr->addEntry(&entry1));
+
+    // Add entry in Backup group
+    PW_ENTRY entry2;
+    std::memset(&entry2, 0, sizeof(PW_ENTRY));
+    entry2.uGroupId = 2;
+    entry2.uImageId = 0;
+    entry2.pszTitle = const_cast<char*>("Test Backup");
+    entry2.pszUserName = const_cast<char*>("user");
+    entry2.pszPassword = const_cast<char*>("password");
+    entry2.pszURL = const_cast<char*>("http://example.com");
+    entry2.pszAdditional = const_cast<char*>("notes");
+    entry2.pszBinaryDesc = const_cast<char*>("");
+    entry2.pBinaryData = nullptr;
+    entry2.uBinaryDataLen = 0;
+    Random::fillBuffer(entry2.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry2.tCreation);
+    entry2.tLastAccess = entry2.tCreation;
+    entry2.tLastMod = entry2.tCreation;
+    PwManager::getNeverExpireTime(&entry2.tExpire);
+    QVERIFY(mgr->addEntry(&entry2));
+
+    QString error;
+
+    // Search WITHOUT excluding backups - should find both
+    QList<quint32> results = mgr->findAll("test", false, PWMF_TITLE,
+                                          false, false, &error);
+    QCOMPARE(results.count(), 2);
+
+    // Search WITH excluding backups - should find only the non-backup entry
+    results = mgr->findAll("test", false, PWMF_TITLE,
+                          true, false, &error);
+    QCOMPARE(results.count(), 1);
+    QCOMPARE(results.at(0), (quint32)0);  // First entry only
+
+    delete mgr;
+}
+
+void TestPwManager::testFindExcludeExpired()
+{
+    PwManager* mgr = createTestManager();
+    mgr->newDatabase();
+    mgr->setMasterKey("test", false, "", true, "");
+
+    // Add a test group
+    PW_GROUP group;
+    std::memset(&group, 0, sizeof(PW_GROUP));
+    group.pszGroupName = const_cast<char*>("Internet");
+    group.uGroupId = 1;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &group.tCreation);
+    group.tLastAccess = group.tCreation;
+    group.tLastMod = group.tCreation;
+    PwManager::getNeverExpireTime(&group.tExpire);
+    group.uImageId = 1;
+    QVERIFY(mgr->addGroup(&group));
+
+    // Add non-expired entry
+    PW_ENTRY entry1;
+    std::memset(&entry1, 0, sizeof(PW_ENTRY));
+    entry1.uGroupId = 1;
+    entry1.uImageId = 0;
+    entry1.pszTitle = const_cast<char*>("Test Entry");
+    entry1.pszUserName = const_cast<char*>("user");
+    entry1.pszPassword = const_cast<char*>("password");
+    entry1.pszURL = const_cast<char*>("http://example.com");
+    entry1.pszAdditional = const_cast<char*>("notes");
+    entry1.pszBinaryDesc = const_cast<char*>("");
+    entry1.pBinaryData = nullptr;
+    entry1.uBinaryDataLen = 0;
+    Random::fillBuffer(entry1.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry1.tCreation);
+    entry1.tLastAccess = entry1.tCreation;
+    entry1.tLastMod = entry1.tCreation;
+    PwManager::getNeverExpireTime(&entry1.tExpire);  // Never expires
+    QVERIFY(mgr->addEntry(&entry1));
+
+    // Add expired entry (expiry date in the past)
+    PW_ENTRY entry2;
+    std::memset(&entry2, 0, sizeof(PW_ENTRY));
+    entry2.uGroupId = 1;
+    entry2.uImageId = 0;
+    entry2.pszTitle = const_cast<char*>("Test Expired");
+    entry2.pszUserName = const_cast<char*>("user");
+    entry2.pszPassword = const_cast<char*>("password");
+    entry2.pszURL = const_cast<char*>("http://example.com");
+    entry2.pszAdditional = const_cast<char*>("notes");
+    entry2.pszBinaryDesc = const_cast<char*>("");
+    entry2.pBinaryData = nullptr;
+    entry2.uBinaryDataLen = 0;
+    Random::fillBuffer(entry2.uuid, 16);
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &entry2.tCreation);
+    entry2.tLastAccess = entry2.tCreation;
+    entry2.tLastMod = entry2.tCreation;
+    // Set expiry to yesterday
+    entry2.tExpire.shYear = 2020;
+    entry2.tExpire.btMonth = 1;
+    entry2.tExpire.btDay = 1;
+    entry2.tExpire.btHour = 0;
+    entry2.tExpire.btMinute = 0;
+    entry2.tExpire.btSecond = 0;
+    QVERIFY(mgr->addEntry(&entry2));
+
+    QString error;
+
+    // Search WITHOUT excluding expired - should find both
+    QList<quint32> results = mgr->findAll("test", false, PWMF_TITLE,
+                                          false, false, &error);
+    QCOMPARE(results.count(), 2);
+
+    // Search WITH excluding expired - should find only non-expired entry
+    results = mgr->findAll("test", false, PWMF_TITLE,
+                          false, true, &error);
+    QCOMPARE(results.count(), 1);
+    QCOMPARE(results.at(0), (quint32)0);  // First entry only (non-expired)
+
+    delete mgr;
+}
+
+//==============================================================================
+// Password Generator Tests
+//==============================================================================
+
+void TestPwManager::testPasswordGeneratorBasic()
+{
+    PasswordGeneratorSettings settings = PasswordGenerator::getDefaultSettings();
+    QCOMPARE(settings.length, (quint32)20);
+    QVERIFY(settings.includeUpperCase);
+    QVERIFY(settings.includeLowerCase);
+    QVERIFY(settings.includeDigits);
+
+    QString error;
+    QString password = PasswordGenerator::generate(settings, &error);
+
+    QVERIFY(!password.isEmpty());
+    QVERIFY(error.isEmpty());
+    QCOMPARE(password.length(), 20);
+
+    // Verify password contains expected character types
+    bool hasUpper = false, hasLower = false, hasDigit = false;
+    for (const QChar& ch : password) {
+        if (ch.isUpper()) hasUpper = true;
+        if (ch.isLower()) hasLower = true;
+        if (ch.isDigit()) hasDigit = true;
+    }
+    QVERIFY(hasUpper || hasLower || hasDigit);  // At least one type
+}
+
+void TestPwManager::testPasswordGeneratorCharSets()
+{
+    // Test uppercase only
+    PasswordGeneratorSettings settings;
+    settings.length = 10;
+    settings.includeUpperCase = true;
+    settings.includeLowerCase = false;
+    settings.includeDigits = false;
+
+    QString error;
+    QString password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+    QCOMPARE(password.length(), 10);
+
+    for (const QChar& ch : password) {
+        QVERIFY(ch.isUpper());
+    }
+
+    // Test lowercase only
+    settings.includeUpperCase = false;
+    settings.includeLowerCase = true;
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+
+    for (const QChar& ch : password) {
+        QVERIFY(ch.isLower());
+    }
+
+    // Test digits only
+    settings.includeLowerCase = false;
+    settings.includeDigits = true;
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+
+    for (const QChar& ch : password) {
+        QVERIFY(ch.isDigit());
+    }
+
+    // Test special characters
+    settings.includeDigits = false;
+    settings.includeSpecial = true;
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+
+    // Test custom character set
+    settings = PasswordGeneratorSettings();
+    settings.length = 10;
+    settings.customCharSet = "ABC123";
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+    QCOMPARE(password.length(), 10);
+
+    for (const QChar& ch : password) {
+        QVERIFY(settings.customCharSet.contains(ch));
+    }
+}
+
+void TestPwManager::testPasswordGeneratorExclusions()
+{
+    // Test exclude look-alike characters (O0Il1|)
+    PasswordGeneratorSettings settings = PasswordGenerator::getDefaultSettings();
+    settings.excludeLookAlike = true;
+
+    QString error;
+    QString password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+
+    // Should not contain confusing characters
+    QString confusing = "O0Il1|";
+    for (const QChar& ch : password) {
+        QVERIFY(!confusing.contains(ch));
+    }
+
+    // Test custom exclusions (case-sensitive)
+    settings = PasswordGenerator::getDefaultSettings();
+    settings.excludeChars = "aeiou";  // Exclude lowercase vowels
+
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+
+    for (const QChar& ch : password) {
+        QVERIFY(!settings.excludeChars.contains(ch));  // Exact match, case-sensitive
+    }
+
+    // Test combined exclusions
+    settings.excludeLookAlike = true;
+    settings.excludeChars = "xyz";
+
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+
+    QString allExcluded = confusing + settings.excludeChars;
+    for (const QChar& ch : password) {
+        QVERIFY(!allExcluded.contains(ch));  // Case-sensitive
+    }
+}
+
+void TestPwManager::testPasswordGeneratorNoRepeat()
+{
+    // Test no repeat characters
+    PasswordGeneratorSettings settings;
+    settings.length = 10;
+    settings.includeUpperCase = true;
+    settings.includeLowerCase = true;
+    settings.includeDigits = true;
+    settings.noRepeatChars = true;
+
+    QString error;
+    QString password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+    QCOMPARE(password.length(), 10);
+
+    // Verify all characters are unique
+    QSet<QChar> uniqueChars;
+    for (const QChar& ch : password) {
+        uniqueChars.insert(ch);
+    }
+    QCOMPARE(uniqueChars.size(), 10);
+
+    // Test that length > charset size with no-repeat should fail
+    // (can't have unique characters if charset is smaller than length)
+    settings.customCharSet = "ABC";
+    settings.length = 5;
+    settings.noRepeatChars = true;
+
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(password.isEmpty());  // Should fail
+    QVERIFY(!error.isEmpty());  // Should have error message
+    QVERIFY(error.contains("only 3 characters") || error.contains("charset"));
+
+    // But it should work when length <= charset size
+    settings.length = 3;
+    error.clear();
+    password = PasswordGenerator::generate(settings, &error);
+    QVERIFY(!password.isEmpty());
+    QVERIFY(error.isEmpty());
+    QCOMPARE(password.length(), 3);
+
+    // All 3 characters should be unique
+    uniqueChars.clear();
+    for (const QChar& ch : password) {
+        uniqueChars.insert(ch);
+    }
+    QCOMPARE(uniqueChars.size(), 3);
+}
+
+void TestPwManager::testPasswordGeneratorEntropy()
+{
+    // Test entropy calculation
+    // Entropy = length * log2(charSetSize)
+
+    // charset size 10, length 10 -> entropy = 10 * log2(10) ≈ 33.22 bits
+    double entropy = PasswordGenerator::calculateEntropy(10, 10);
+    QVERIFY(entropy > 33.0 && entropy < 34.0);
+
+    // charset size 62 (A-Za-z0-9), length 20 -> entropy = 20 * log2(62) ≈ 119.3 bits
+    entropy = PasswordGenerator::calculateEntropy(62, 20);
+    QVERIFY(entropy > 119.0 && entropy < 120.0);
+
+    // charset size 95 (all printable), length 16 -> entropy = 16 * log2(95) ≈ 105.4 bits
+    entropy = PasswordGenerator::calculateEntropy(95, 16);
+    QVERIFY(entropy > 105.0 && entropy < 106.0);
+
+    // Edge cases
+    QCOMPARE(PasswordGenerator::calculateEntropy(0, 10), 0.0);
+    QCOMPARE(PasswordGenerator::calculateEntropy(10, 0), 0.0);
+}
+
+void TestPwManager::testPasswordGeneratorQuality()
+{
+    // Test quality calculation (0-100 scale)
+
+    // Weak password (< 33)
+    QString weakPassword = "abc";  // ~3 chars, low entropy
+    quint32 quality = PasswordGenerator::calculateQuality(weakPassword);
+    QVERIFY(quality < 33);
+
+    // Medium password (33-66)
+    // Need ~12+ chars with good variety for medium
+    QString mediumPassword = "Hello12345678";  // 13 chars
+    quality = PasswordGenerator::calculateQuality(mediumPassword);
+    QVERIFY(quality >= 33 && quality < 90);
+
+    // Strong password (66-90)
+    QString strongPassword = "Tr0ub4dor&3SecurePass";  // 20 chars, mixed case, digits, special
+    quality = PasswordGenerator::calculateQuality(strongPassword);
+    QVERIFY(quality >= 66);
+
+    // Very strong password (90-100)
+    QString veryStrongPassword = "CorrectHorseBatteryStaple1234567890";  // 35 chars
+    quality = PasswordGenerator::calculateQuality(veryStrongPassword);
+    QVERIFY(quality >= 90);
+
+    // Empty password
+    quality = PasswordGenerator::calculateQuality("");
+    QCOMPARE(quality, (quint32)0);
+
+    // Long random password should be very high quality
+    PasswordGeneratorSettings settings = PasswordGenerator::getDefaultSettings();
+    settings.length = 32;
+    QString error;
+    QString password = PasswordGenerator::generate(settings, &error);
+    quality = PasswordGenerator::calculateQuality(password);
+    QVERIFY(quality >= 90);
+}
+
+void TestPwManager::testPasswordGeneratorSettingsValidation()
+{
+    PasswordGeneratorSettings settings;
+    QString error;
+
+    // Valid default settings
+    settings = PasswordGenerator::getDefaultSettings();
+    QVERIFY(settings.isValid(&error));
+    QVERIFY(error.isEmpty());
+
+    // Test empty character set (all checkboxes off, no custom)
+    settings.includeUpperCase = false;
+    settings.includeLowerCase = false;
+    settings.includeDigits = false;
+    settings.customCharSet = "";
+    QVERIFY(!settings.isValid(&error));
+    QVERIFY(!error.isEmpty());
+    QVERIFY(error.contains("character set") || error.contains("empty"));
+
+    // Test invalid length (0)
+    settings = PasswordGenerator::getDefaultSettings();
+    settings.length = 0;
+    QVERIFY(!settings.isValid(&error));
+    QVERIFY(!error.isEmpty());
+
+    // Test no repeat with length > charset size
+    settings = PasswordGeneratorSettings();
+    settings.customCharSet = "AB";
+    settings.length = 10;
+    settings.noRepeatChars = true;
+    // Should be invalid (can't have 10 unique chars from charset of 2)
+    QVERIFY(!settings.isValid(&error));
+    QVERIFY(!error.isEmpty());
+
+    // Should be valid when length <= charset size
+    settings.length = 2;
+    error.clear();
+    QVERIFY(settings.isValid(&error));
+    QVERIFY(error.isEmpty());
+
+    // Test valid custom charset
+    settings = PasswordGeneratorSettings();
+    settings.customCharSet = "XYZ123";
+    settings.length = 5;
+    QVERIFY(settings.isValid(&error));
+    QVERIFY(error.isEmpty());
+
+    // Verify buildCharSet works
+    QString charSet = settings.buildCharSet();
+    QCOMPARE(charSet, QString("XYZ123"));
+
+    // Test buildCharSet with checkboxes
+    settings = PasswordGeneratorSettings();
+    settings.includeUpperCase = true;
+    settings.includeLowerCase = false;
+    settings.includeDigits = true;
+    charSet = settings.buildCharSet();
+    QVERIFY(charSet.contains('A'));
+    QVERIFY(charSet.contains('Z'));
+    QVERIFY(charSet.contains('0'));
+    QVERIFY(charSet.contains('9'));
+    QVERIFY(!charSet.contains('a'));
 }
 
 QTEST_MAIN(TestPwManager)

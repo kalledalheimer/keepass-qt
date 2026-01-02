@@ -49,6 +49,10 @@ public:
     void setGroupFilter(quint32 groupId);
     void clearGroupFilter();
 
+    // Filter by entry indices (for search results)
+    void setIndexFilter(const QList<quint32>& entryIndices);
+    void clearIndexFilter();
+
     // Data refresh
     void refresh();
 
@@ -56,6 +60,8 @@ private:
     PwManager *m_pwManager;
     quint32 m_filterGroupId;
     bool m_hasGroupFilter;
+    QList<quint32> m_filterIndices;
+    bool m_hasIndexFilter;
 
     // Internal methods
     QList<PW_ENTRY*> getFilteredEntries() const;

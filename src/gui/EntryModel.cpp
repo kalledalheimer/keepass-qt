@@ -15,6 +15,7 @@ EntryModel::EntryModel(PwManager *pwManager, QObject *parent)
     , m_pwManager(pwManager)
     , m_filterGroupId(0)
     , m_hasGroupFilter(false)
+    , m_hasIndexFilter(false)
 {
 }
 
@@ -157,6 +158,22 @@ void EntryModel::clearGroupFilter()
     endResetModel();
 }
 
+void EntryModel::setIndexFilter(const QList<quint32>& entryIndices)
+{
+    beginResetModel();
+    m_filterIndices = entryIndices;
+    m_hasIndexFilter = true;
+    endResetModel();
+}
+
+void EntryModel::clearIndexFilter()
+{
+    beginResetModel();
+    m_hasIndexFilter = false;
+    m_filterIndices.clear();
+    endResetModel();
+}
+
 void EntryModel::refresh()
 {
     beginResetModel();
@@ -171,6 +188,18 @@ QList<PW_ENTRY*> EntryModel::getFilteredEntries() const
         return result;
     }
 
+    // If index filter is active, use it (takes precedence over group filter)
+    if (m_hasIndexFilter) {
+        for (quint32 idx : m_filterIndices) {
+            PW_ENTRY *entry = m_pwManager->getEntry(idx);
+            if (entry) {
+                result.append(entry);
+            }
+        }
+        return result;
+    }
+
+    // Otherwise, use group filter if active
     quint32 numEntries = m_pwManager->getNumberOfEntries();
     for (quint32 i = 0; i < numEntries; ++i) {
         PW_ENTRY *entry = m_pwManager->getEntry(i);

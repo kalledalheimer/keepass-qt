@@ -42,8 +42,21 @@ public:
         unpackTime(pBytes5, pTime);
     }
 
+    /// Convert UUID (16 bytes) to string representation
+    /// Format: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (lowercase hex)
+    static QString uuidToString(const quint8* uuid);
+
+    /// Compare two PW_TIME structures
+    /// Returns: -1 if t1 < t2, 0 if equal, 1 if t1 > t2
+    static int compareTime(const PW_TIME* t1, const PW_TIME* t2);
+
 private:
     PwUtil() = delete;  // Static class, no instantiation
 };
+
+// Special group names (matching MFC constants)
+#define PWS_SEARCHGROUP "Search Results"
+#define PWS_BACKUPGROUP "Backup"
+#define PWS_BACKUPGROUP_SRC "Backup"
 
 #endif // PW_UTIL_H

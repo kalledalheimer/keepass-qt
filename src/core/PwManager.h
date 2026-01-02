@@ -256,6 +256,8 @@ public:
                  quint32 nStart, quint32 nEndExcl, QString* pError = nullptr);
     quint32 findEx(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
                    quint32 nStart, QString* pError = nullptr);
+    QList<quint32> findAll(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
+                           bool excludeBackups, bool excludeExpired, QString* pError = nullptr);
 
     // Encryption settings
     int getAlgorithm() const;

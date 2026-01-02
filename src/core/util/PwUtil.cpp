@@ -105,3 +105,56 @@ void PwUtil::getNeverExpireTime(PW_TIME* pTime)
     pTime->btMinute = 59;
     pTime->btSecond = 59;
 }
+
+QString PwUtil::uuidToString(const quint8* uuid)
+{
+    if (!uuid)
+        return QString();
+
+    // Convert 16-byte UUID to string format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    // Example: 12345678-1234-1234-1234-123456789abc
+    return QString("%1%2%3%4-%5%6-%7%8-%9%10-%11%12%13%14%15%16")
+        .arg(uuid[0], 2, 16, QChar('0'))
+        .arg(uuid[1], 2, 16, QChar('0'))
+        .arg(uuid[2], 2, 16, QChar('0'))
+        .arg(uuid[3], 2, 16, QChar('0'))
+        .arg(uuid[4], 2, 16, QChar('0'))
+        .arg(uuid[5], 2, 16, QChar('0'))
+        .arg(uuid[6], 2, 16, QChar('0'))
+        .arg(uuid[7], 2, 16, QChar('0'))
+        .arg(uuid[8], 2, 16, QChar('0'))
+        .arg(uuid[9], 2, 16, QChar('0'))
+        .arg(uuid[10], 2, 16, QChar('0'))
+        .arg(uuid[11], 2, 16, QChar('0'))
+        .arg(uuid[12], 2, 16, QChar('0'))
+        .arg(uuid[13], 2, 16, QChar('0'))
+        .arg(uuid[14], 2, 16, QChar('0'))
+        .arg(uuid[15], 2, 16, QChar('0'));
+}
+
+int PwUtil::compareTime(const PW_TIME* t1, const PW_TIME* t2)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/Util/MemUtil.cpp _pwtimecmp
+    if (!t1 || !t2)
+        return 0;
+
+    if (t1->shYear < t2->shYear) return -1;
+    if (t1->shYear > t2->shYear) return 1;
+
+    if (t1->btMonth < t2->btMonth) return -1;
+    if (t1->btMonth > t2->btMonth) return 1;
+
+    if (t1->btDay < t2->btDay) return -1;
+    if (t1->btDay > t2->btDay) return 1;
+
+    if (t1->btHour < t2->btHour) return -1;
+    if (t1->btHour > t2->btHour) return 1;
+
+    if (t1->btMinute < t2->btMinute) return -1;
+    if (t1->btMinute > t2->btMinute) return 1;
+
+    if (t1->btSecond < t2->btSecond) return -1;
+    if (t1->btSecond > t2->btSecond) return 1;
+
+    return 0;  // They are exactly the same
+}

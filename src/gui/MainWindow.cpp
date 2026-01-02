@@ -8,6 +8,8 @@
 #include "MasterKeyDialog.h"
 #include "AddGroupDialog.h"
 #include "AddEntryDialog.h"
+#include "FindDialog.h"
+#include "PasswordGeneratorDialog.h"
 #include "IconManager.h"
 #include "../core/PwManager.h"
 #include "../core/platform/PwSettings.h"
@@ -1065,7 +1067,82 @@ void MainWindow::onEditDeleteGroup()
 
 void MainWindow::onEditFind()
 {
-    // TODO: Implement
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp _Find method
+    if (!m_pwManager || !m_hasDatabase) {
+        return;
+    }
+
+    // Show Find dialog
+    FindDialog findDialog(m_pwManager, this);
+    if (findDialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    // Get search parameters
+    QString searchString = findDialog.searchString();
+    quint32 searchFlags = findDialog.searchFlags();
+    bool caseSensitive = findDialog.isCaseSensitive();
+    bool excludeBackups = findDialog.excludeBackups();
+    bool excludeExpired = findDialog.excludeExpired();
+
+    // Perform search for ALL matches (not just first)
+    QString error;
+    QList<quint32> results = m_pwManager->findAll(searchString, caseSensitive, searchFlags,
+                                                   excludeBackups, excludeExpired, &error);
+
+    if (results.isEmpty()) {
+        // Not found
+        if (!error.isEmpty()) {
+            QMessageBox::warning(this, tr("Find"), tr("Search error: %1").arg(error));
+        } else {
+            QMessageBox::information(this, tr("Find"),
+                tr("No entries found matching '%1'").arg(searchString));
+        }
+        m_statusLabel->setText(tr("Search completed - no matches found"));
+        return;
+    }
+
+    // Create "Search Results" group if it doesn't exist
+    // Reference: MFC uses PWS_SEARCHGROUP = "Search Results" with icon 40
+    quint32 searchGroupId = m_pwManager->getGroupId(PWS_SEARCHGROUP);
+    if (searchGroupId == 0xFFFFFFFF) {
+        PW_GROUP searchGroup;
+        std::memset(&searchGroup, 0, sizeof(PW_GROUP));
+        searchGroup.pszGroupName = const_cast<char*>(PWS_SEARCHGROUP);
+        searchGroup.uGroupId = 0;  // 0 = auto-generate ID
+        searchGroup.uImageId = 40;  // MFC uses icon 40 for search results
+        searchGroup.usLevel = 0;
+        searchGroup.dwFlags = 0;
+
+        PwUtil::getCurrentTime(&searchGroup.tCreation);
+        searchGroup.tLastAccess = searchGroup.tCreation;
+        searchGroup.tLastMod = searchGroup.tCreation;
+        PwManager::getNeverExpireTime(&searchGroup.tExpire);
+
+        if (m_pwManager->addGroup(&searchGroup)) {
+            searchGroupId = m_pwManager->getGroupId(PWS_SEARCHGROUP);
+            // Refresh group model to show the new group
+            refreshModels();
+        }
+    }
+
+    // Display all matching entries using index filter
+    m_entryModel->clearGroupFilter();
+    m_entryModel->setIndexFilter(results);
+
+    // Select the first result
+    if (!results.isEmpty()) {
+        m_entryView->selectRow(0);
+        m_entryView->scrollTo(m_entryModel->index(0, 0));
+        m_entryView->setFocus();
+    }
+
+    // Update status bar
+    m_statusLabel->setText(tr("Found %n matching entr(ies)", "", results.count()));
+
+    // Show result message
+    QMessageBox::information(this, tr("Find"),
+        tr("Found %n matching entr(ies) for '%1'", "", results.count()).arg(searchString));
 }
 
 void MainWindow::onViewToolbar()
@@ -1096,7 +1173,13 @@ void MainWindow::onToolsOptions()
 
 void MainWindow::onToolsPasswordGenerator()
 {
-    // TODO: Implement
+    PasswordGeneratorDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted) {
+        QString password = dialog.generatedPassword();
+        // Password generated successfully
+        // User can copy it from the dialog before closing
+        m_statusLabel->setText(tr("Password generated successfully"));
+    }
 }
 
 void MainWindow::onToolsDatabaseSettings()

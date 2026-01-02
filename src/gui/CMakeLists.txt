@@ -17,6 +17,10 @@ add_library(keepass-gui STATIC
     AddGroupDialog.h
     AddEntryDialog.cpp
     AddEntryDialog.h
+    FindDialog.cpp
+    FindDialog.h
+    PasswordGeneratorDialog.cpp
+    PasswordGeneratorDialog.h
 
     # Icon management
     IconManager.cpp

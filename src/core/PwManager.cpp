@@ -22,6 +22,7 @@
 #include <QFile>
 #include <QDateTime>
 #include <QDebug>
+#include <QRegularExpression>
 #include <cstring>
 #include <cstdlib>
 
@@ -1944,6 +1945,210 @@ void PwManager::fixGroupTree()
 
         usLastLevel = m_pGroups[i].usLevel;
     }
+}
+
+// Helper function for string matching in search
+static bool matchesSearch(const QString& text, const QString& searchString,
+                          bool caseSensitive, bool useRegex, const QRegularExpression& regex)
+{
+    if (text.isEmpty() && searchString.isEmpty()) {
+        return true;
+    }
+
+    if (text.isEmpty()) {
+        return false;
+    }
+
+    if (useRegex) {
+        // Use regex matching
+        QRegularExpressionMatch match = regex.match(text);
+        return match.hasMatch();
+    } else {
+        // Use simple string contains
+        Qt::CaseSensitivity cs = caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
+        return text.contains(searchString, cs);
+    }
+}
+
+quint32 PwManager::find(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
+                        quint32 nStart, quint32 nEndExcl, QString* pError)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp Find method
+    // Searches for entries matching the given string
+
+    if (findString.isEmpty()) {
+        if (pError) *pError = "Search string cannot be empty";
+        return 0xFFFFFFFF;
+    }
+
+    if (nStart >= m_numEntries) {
+        return 0xFFFFFFFF;
+    }
+
+    quint32 nEnd = (nEndExcl == 0xFFFFFFFF) ? m_numEntries : nEndExcl;
+    if (nEnd > m_numEntries) {
+        nEnd = m_numEntries;
+    }
+
+    // Check if regex flag is set
+    bool useRegex = (searchFlags & PWMS_REGEX) != 0;
+    QRegularExpression regex;
+
+    if (useRegex) {
+        QRegularExpression::PatternOptions options = QRegularExpression::NoPatternOption;
+        if (!bCaseSensitive) {
+            options |= QRegularExpression::CaseInsensitiveOption;
+        }
+
+        regex.setPattern(findString);
+        regex.setPatternOptions(options);
+
+        if (!regex.isValid()) {
+            if (pError) *pError = QString("Invalid regular expression: %1").arg(regex.errorString());
+            return 0xFFFFFFFF;
+        }
+    }
+
+    // Search through entries
+    for (quint32 i = nStart; i < nEnd; ++i) {
+        PW_ENTRY* entry = &m_pEntries[i];
+        if (!entry) continue;
+
+        // Check each field based on search flags
+        if (searchFlags & PWMF_TITLE) {
+            QString title = QString::fromUtf8(entry->pszTitle);
+            if (matchesSearch(title, findString, bCaseSensitive, useRegex, regex)) {
+                return i;
+            }
+        }
+
+        if (searchFlags & PWMF_USER) {
+            QString username = QString::fromUtf8(entry->pszUserName);
+            if (matchesSearch(username, findString, bCaseSensitive, useRegex, regex)) {
+                return i;
+            }
+        }
+
+        if (searchFlags & PWMF_URL) {
+            QString url = QString::fromUtf8(entry->pszURL);
+            if (matchesSearch(url, findString, bCaseSensitive, useRegex, regex)) {
+                return i;
+            }
+        }
+
+        if (searchFlags & PWMF_PASSWORD) {
+            unlockEntryPassword(entry);
+            QString password = QString::fromUtf8(entry->pszPassword);
+            lockEntryPassword(entry);
+            if (matchesSearch(password, findString, bCaseSensitive, useRegex, regex)) {
+                return i;
+            }
+        }
+
+        if (searchFlags & PWMF_ADDITIONAL) {
+            QString notes = QString::fromUtf8(entry->pszAdditional);
+            if (matchesSearch(notes, findString, bCaseSensitive, useRegex, regex)) {
+                return i;
+            }
+        }
+
+        if (searchFlags & PWMF_UUID) {
+            QString uuid = PwUtil::uuidToString(entry->uuid);
+            if (matchesSearch(uuid, findString, bCaseSensitive, useRegex, regex)) {
+                return i;
+            }
+        }
+
+        if (searchFlags & PWMF_GROUPNAME) {
+            PW_GROUP* group = getGroupById(entry->uGroupId);
+            if (group) {
+                QString groupName = QString::fromUtf8(group->pszGroupName);
+                if (matchesSearch(groupName, findString, bCaseSensitive, useRegex, regex)) {
+                    return i;
+                }
+            }
+        }
+    }
+
+    return 0xFFFFFFFF;  // Not found
+}
+
+quint32 PwManager::findEx(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
+                          quint32 nStart, QString* pError)
+{
+    // FindEx is a simplified version that searches from nStart to end
+    return find(findString, bCaseSensitive, searchFlags, nStart, 0xFFFFFFFF, pError);
+}
+
+QList<quint32> PwManager::findAll(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
+                                   bool excludeBackups, bool excludeExpired, QString* pError)
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp _Find method
+    // Finds ALL matching entries with optional filtering
+    QList<quint32> results;
+
+    if (findString.isEmpty()) {
+        if (pError) *pError = "Search string cannot be empty";
+        return results;
+    }
+
+    // Get current time for expiry checking
+    PW_TIME currentTime;
+    PwUtil::getCurrentTime(&currentTime);
+
+    // Get IDs for backup groups
+    quint32 backupGroupId = getGroupId(PWS_BACKUPGROUP);
+    quint32 backupSrcGroupId = getGroupId(PWS_BACKUPGROUP_SRC);
+
+    // Loop through all entries and find matches
+    quint32 cnt = 0;
+    while (cnt < m_numEntries) {
+        QString error;
+        quint32 foundIndex = find(findString, bCaseSensitive, searchFlags, cnt, 0xFFFFFFFF, &error);
+
+        if (foundIndex == 0xFFFFFFFF) {
+            // No more matches
+            if (!error.isEmpty() && pError && pError->isEmpty()) {
+                *pError = error;
+            }
+            break;
+        }
+
+        PW_ENTRY* entry = getEntry(foundIndex);
+        if (!entry) {
+            break;
+        }
+
+        // Apply filters
+        bool includeEntry = true;
+
+        // Filter: Exclude backups
+        if (excludeBackups && includeEntry) {
+            if (entry->uGroupId == backupGroupId || entry->uGroupId == backupSrcGroupId) {
+                includeEntry = false;
+            }
+        }
+
+        // Filter: Exclude expired entries
+        if (excludeExpired && includeEntry) {
+            if (PwUtil::compareTime(&currentTime, &entry->tExpire) > 0) {
+                includeEntry = false;
+            }
+        }
+
+        // Add to results if it passes all filters
+        if (includeEntry) {
+            results.append(foundIndex);
+        }
+
+        // Continue searching from next entry
+        cnt = foundIndex + 1;
+        if (cnt >= m_numEntries) {
+            break;
+        }
+    }
+
+    return results;
 }
 
 // Helper function to convert UTF-8 to QString (and allocate TCHAR string)

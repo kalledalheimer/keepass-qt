@@ -38,6 +38,10 @@ add_library(keepass-core STATIC
     util/PwUtil.cpp
     util/PwUtil.h
 
+    # Password Generator
+    PasswordGenerator.cpp
+    PasswordGenerator.h
+
     # Constants
     PwConstants.h
 
