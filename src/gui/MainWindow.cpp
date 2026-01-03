@@ -11,6 +11,7 @@
 #include "FindDialog.h"
 #include "PasswordGeneratorDialog.h"
 #include "DatabaseSettingsDialog.h"
+#include "OptionsDialog.h"
 #include "IconManager.h"
 #include "../core/PwManager.h"
 #include "../core/platform/PwSettings.h"
@@ -1197,8 +1198,13 @@ void MainWindow::onViewCollapseAll()
 
 void MainWindow::onToolsOptions()
 {
-    // TODO: Implement
-    QMessageBox::information(this, tr("Not Implemented"), tr("Tools > Options will be implemented later"));
+    OptionsDialog dialog(this);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        // Note: Settings are automatically saved by OptionsDialog when OK is clicked
+        // Some settings might require application restart to take effect
+        m_statusLabel->setText(tr("Settings saved successfully"));
+    }
 }
 
 void MainWindow::onToolsPasswordGenerator()
