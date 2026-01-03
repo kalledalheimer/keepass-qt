@@ -83,10 +83,13 @@ Last updated: 2026-01-02
   - Real-time character set size preview
   - 7 comprehensive unit tests
 
-- [ ] Implement Copy Username/Password operations (#9)
-  - Copy Username to clipboard (Edit menu + toolbar)
-  - Copy Password to clipboard (Edit menu + toolbar)
-  - Clipboard auto-clear after timeout
+- [x] Implement Copy Username/Password operations (#9) - **COMPLETE** ✅
+  - Copy Username to clipboard (Edit menu + toolbar, Ctrl+B)
+  - Copy Password to clipboard (Edit menu + toolbar, Ctrl+C)
+  - Clipboard auto-clear timer (default: 10 seconds)
+  - SHA-256 hash-based ownership tracking
+  - Real-time countdown in status bar
+  - Secure password unlock/lock during copy
 
 - [ ] Implement Database Settings dialog (#10)
   - Database name and description
@@ -126,6 +129,41 @@ Last updated: 2026-01-02
   - Explain crypto/security-critical code
 
 ## ✅ Recently Completed
+
+### Session 11: Phase 4 - Clipboard Operations Implementation (2026-01-02)
+**Third Phase 4 Feature Complete:** Copy Username/Password with secure auto-clear
+- [x] **Implemented Copy to Clipboard Operations (#9)**
+  - Copy Username to clipboard (Edit > Copy Username, Ctrl+B)
+  - Copy Password to clipboard (Edit > Copy Password, Ctrl+C)
+  - Secure password handling (unlock → copy → lock)
+  - SHA-256 hash-based clipboard ownership tracking
+  - Auto-clear timer with real-time countdown
+- [x] **Clipboard Management System**
+  - copyToClipboard() - Copy text and store SHA-256 hash
+  - clearClipboardIfOwner() - Only clear if we own clipboard
+  - startClipboardTimer() - Initialize countdown timer
+  - onClipboardTimer() - Timer handler with status updates
+  - Default timeout: 10 seconds (matching MFC)
+- [x] **UI Integration**
+  - Edit menu: Copy Username, Copy Password actions
+  - Toolbar: Copy Username and Copy Password buttons
+  - Keyboard shortcuts: Ctrl+B (username), Ctrl+C (password)
+  - Actions enabled only when entry is selected
+  - Status bar countdown: "Clipboard will be cleared in X seconds"
+- [x] **Security Features**
+  - Passwords unlocked only during copy operation
+  - Immediate re-locking after clipboard copy
+  - Hash comparison prevents clearing user's own content
+  - Timer stops automatically after clearing
+- [x] **Testing**
+  - All 27/27 unit tests passing ✅
+  - Clean build with no warnings
+  - Proper integration with entry selection
+- [x] **100% MFC Feature Parity**
+  - Matches MFC OnPwlistCopyPw/OnPwlistCopyUser
+  - Matches MFC CopyStringToClipboard behavior
+  - Matches MFC ClearClipboardIfOwner logic
+  - Same default timeout (10+1 seconds)
 
 ### Session 10: Phase 4 - Password Generator Implementation (2026-01-02)
 **Second Phase 4 Feature Complete:** Professional password generator with full MFC parity
