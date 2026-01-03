@@ -354,6 +354,16 @@ void PwManager::setColor(const QColor& clr)
     m_clr = clr;
 }
 
+QString PwManager::getDefaultUserName() const
+{
+    return m_strDefaultUserName;
+}
+
+void PwManager::setDefaultUserName(const QString& strUserName)
+{
+    m_strDefaultUserName = strUserName;
+}
+
 bool PwManager::transformMasterKey(const quint8* pKeySeed)
 {
     if (!pKeySeed)

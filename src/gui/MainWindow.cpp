@@ -10,6 +10,7 @@
 #include "AddEntryDialog.h"
 #include "FindDialog.h"
 #include "PasswordGeneratorDialog.h"
+#include "DatabaseSettingsDialog.h"
 #include "IconManager.h"
 #include "../core/PwManager.h"
 #include "../core/platform/PwSettings.h"
@@ -1213,7 +1214,57 @@ void MainWindow::onToolsPasswordGenerator()
 
 void MainWindow::onToolsDatabaseSettings()
 {
-    // TODO: Implement
+    // Reference: MFC shows DbSettingsDlg
+    if (!m_pwManager || !m_hasDatabase) {
+        return;
+    }
+
+    DatabaseSettingsDialog dialog(m_pwManager, this);
+
+    // Load current settings
+    dialog.setEncryptionAlgorithm(m_pwManager->getAlgorithm());
+    dialog.setKeyTransformRounds(m_pwManager->getKeyEncRounds());
+    dialog.setDefaultUsername(m_pwManager->getDefaultUserName());
+
+    // Convert QColor to DWORD (0x00RRGGBB), or DWORD_MAX if invalid
+    QColor color = m_pwManager->getColor();
+    quint32 colorValue;
+    if (color.isValid()) {
+        colorValue = (color.red() << 16) | (color.green() << 8) | color.blue();
+    }
+    else {
+        colorValue = 0xFFFFFFFF;  // No custom color
+    }
+    dialog.setDatabaseColor(colorValue);
+
+    // Show dialog
+    if (dialog.exec() == QDialog::Accepted) {
+        // Apply new settings
+        m_pwManager->setAlgorithm(dialog.encryptionAlgorithm());
+        m_pwManager->setKeyEncRounds(dialog.keyTransformRounds());
+        m_pwManager->setDefaultUserName(dialog.defaultUsername());
+
+        // Convert DWORD to QColor
+        quint32 newColor = dialog.databaseColor();
+        if (newColor == 0xFFFFFFFF) {
+            m_pwManager->setColor(QColor());  // Invalid color = no custom color
+        }
+        else {
+            QColor qcolor(
+                (newColor >> 16) & 0xFF,  // R
+                (newColor >> 8) & 0xFF,   // G
+                newColor & 0xFF           // B
+            );
+            m_pwManager->setColor(qcolor);
+        }
+
+        // Mark database as modified
+        m_isModified = true;
+        updateWindowTitle();
+        updateActions();
+
+        m_statusLabel->setText(tr("Database settings updated"));
+    }
 }
 
 void MainWindow::onHelpContents()

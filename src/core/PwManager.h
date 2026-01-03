@@ -287,6 +287,8 @@ public:
     void setTransactedFileWrites(bool bTransacted) { m_bUseTransactedFileWrites = bTransacted; }
     QColor getColor() const;
     void setColor(const QColor& clr);
+    QString getDefaultUserName() const;
+    void setDefaultUserName(const QString& strUserName);
 
     // UI state (public for direct access like MFC version)
     quint32 m_dwLastSelectedGroupId;
