@@ -19,6 +19,8 @@
 #include <QToolBar>
 #include <QMenuBar>
 #include <QLabel>
+#include <QTimer>
+#include <QByteArray>
 
 // Forward declarations
 class PwManager;
@@ -53,6 +55,8 @@ private slots:
     void onEditDeleteEntry();
     void onEditDeleteGroup();
     void onEditFind();
+    void onEditCopyUsername();
+    void onEditCopyPassword();
 
     // View menu
     void onViewToolbar();
@@ -73,6 +77,9 @@ private slots:
     void onGroupSelectionChanged();
     void onEntrySelectionChanged();
     void onEntryDoubleClicked(const QModelIndex &index);
+
+    // Clipboard timer
+    void onClipboardTimer();
 
 private:
     // UI setup
@@ -97,6 +104,11 @@ private:
     void updateActions();
     void updateStatusBar();
     void refreshModels();
+
+    // Clipboard operations
+    void copyToClipboard(const QString &text);
+    void clearClipboardIfOwner();
+    void startClipboardTimer();
 
     // Members
     PwManager *m_pwManager;
@@ -125,6 +137,8 @@ private:
     QAction *m_actionEditDeleteEntry;
     QAction *m_actionEditDeleteGroup;
     QAction *m_actionEditFind;
+    QAction *m_actionEditCopyUsername;
+    QAction *m_actionEditCopyPassword;
 
     // Actions - View
     QAction *m_actionViewToolbar;
@@ -145,6 +159,12 @@ private:
     QString m_currentFilePath;
     bool m_isModified;
     bool m_hasDatabase;
+
+    // Clipboard management
+    QTimer *m_clipboardTimer;
+    int m_clipboardCountdown;
+    QByteArray m_clipboardHash;
+    int m_clipboardTimeoutSecs;
 };
 
 #endif // MAINWINDOW_H

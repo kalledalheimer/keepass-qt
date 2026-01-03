@@ -32,6 +32,8 @@
 #include <QDir>
 #include <QDateTime>
 #include <QDebug>
+#include <QClipboard>
+#include <QCryptographicHash>
 
 #include "../core/PwStructs.h"
 #include <cstring>
@@ -48,7 +50,14 @@ MainWindow::MainWindow(QWidget *parent)
     , m_statusLabel(nullptr)
     , m_isModified(false)
     , m_hasDatabase(false)
+    , m_clipboardTimer(new QTimer(this))
+    , m_clipboardCountdown(-1)
+    , m_clipboardTimeoutSecs(11)  // Default: 10+1 seconds (matching MFC)
 {
+    // Connect clipboard timer
+    connect(m_clipboardTimer, &QTimer::timeout, this, &MainWindow::onClipboardTimer);
+    m_clipboardTimer->setInterval(1000);  // 1 second
+
     setupUi();
     loadSettings();
     updateWindowTitle();
@@ -149,6 +158,18 @@ void MainWindow::createActions()
     m_actionEditFind->setEnabled(false);
     connect(m_actionEditFind, &QAction::triggered, this, &MainWindow::onEditFind);
 
+    m_actionEditCopyUsername = new QAction(iconMgr.getToolbarIcon("tb_copy_username"), tr("Copy &Username"), this);
+    m_actionEditCopyUsername->setShortcut(Qt::CTRL | Qt::Key_B);
+    m_actionEditCopyUsername->setStatusTip(tr("Copy username to clipboard"));
+    m_actionEditCopyUsername->setEnabled(false);
+    connect(m_actionEditCopyUsername, &QAction::triggered, this, &MainWindow::onEditCopyUsername);
+
+    m_actionEditCopyPassword = new QAction(iconMgr.getToolbarIcon("tb_copy_password"), tr("Copy &Password"), this);
+    m_actionEditCopyPassword->setShortcut(QKeySequence::Copy);  // Ctrl+C
+    m_actionEditCopyPassword->setStatusTip(tr("Copy password to clipboard"));
+    m_actionEditCopyPassword->setEnabled(false);
+    connect(m_actionEditCopyPassword, &QAction::triggered, this, &MainWindow::onEditCopyPassword);
+
     // View menu actions
     m_actionViewToolbar = new QAction(tr("&Toolbar"), this);
     m_actionViewToolbar->setCheckable(true);
@@ -220,6 +241,9 @@ void MainWindow::createMenus()
     editMenu->addAction(m_actionEditDeleteEntry);
     editMenu->addAction(m_actionEditDeleteGroup);
     editMenu->addSeparator();
+    editMenu->addAction(m_actionEditCopyUsername);
+    editMenu->addAction(m_actionEditCopyPassword);
+    editMenu->addSeparator();
     editMenu->addAction(m_actionEditFind);
 
     // View menu
@@ -257,6 +281,9 @@ void MainWindow::createToolBar()
     m_toolBar->addAction(m_actionEditAddEntry);
     m_toolBar->addAction(m_actionEditEditEntry);
     m_toolBar->addAction(m_actionEditDeleteEntry);
+    m_toolBar->addSeparator();
+    m_toolBar->addAction(m_actionEditCopyUsername);
+    m_toolBar->addAction(m_actionEditCopyPassword);
 }
 
 void MainWindow::createStatusBar()
@@ -362,6 +389,8 @@ void MainWindow::updateActions()
     m_actionEditDeleteEntry->setEnabled(hasSelection);
     m_actionEditDeleteGroup->setEnabled(m_hasDatabase);
     m_actionEditFind->setEnabled(m_hasDatabase);
+    m_actionEditCopyUsername->setEnabled(hasSelection);
+    m_actionEditCopyPassword->setEnabled(hasSelection);
 
     m_actionViewExpandAll->setEnabled(m_hasDatabase);
     m_actionViewCollapseAll->setEnabled(m_hasDatabase);
@@ -1459,4 +1488,131 @@ bool MainWindow::closeDatabase()
     updateStatusBar();
 
     return true;
+}
+
+//==============================================================================
+// Clipboard Operations
+//==============================================================================
+
+void MainWindow::onEditCopyUsername()
+{
+    // Reference: MFC OnPwlistCopyUser
+    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+        return;
+    }
+
+    QModelIndex index = m_entryView->selectionModel()->currentIndex();
+    if (!index.isValid()) {
+        return;
+    }
+
+    // Get the entry from the model
+    PW_ENTRY* entry = m_entryModel->getEntry(index);
+    if (!entry) {
+        return;
+    }
+
+    // Copy username to clipboard
+    QString username = QString::fromUtf8(entry->pszUserName);
+    copyToClipboard(username);
+
+    m_statusLabel->setText(tr("Field copied to clipboard."));
+    startClipboardTimer();
+}
+
+void MainWindow::onEditCopyPassword()
+{
+    // Reference: MFC OnPwlistCopyPw
+    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+        return;
+    }
+
+    QModelIndex index = m_entryView->selectionModel()->currentIndex();
+    if (!index.isValid()) {
+        return;
+    }
+
+    // Get the entry from the model
+    PW_ENTRY* entry = m_entryModel->getEntry(index);
+    if (!entry) {
+        return;
+    }
+
+    // Unlock password, copy, then lock again (like MFC)
+    m_pwManager->unlockEntryPassword(entry);
+    QString password = QString::fromUtf8(entry->pszPassword);
+    m_pwManager->lockEntryPassword(entry);
+
+    copyToClipboard(password);
+
+    m_statusLabel->setText(tr("Field copied to clipboard."));
+    startClipboardTimer();
+}
+
+void MainWindow::copyToClipboard(const QString &text)
+{
+    // Reference: MFC CopyStringToClipboard
+    QClipboard* clipboard = QApplication::clipboard();
+    clipboard->setText(text);
+
+    // Store hash of clipboard content to track ownership
+    QByteArray utf8Data = text.toUtf8();
+    m_clipboardHash = QCryptographicHash::hash(utf8Data, QCryptographicHash::Sha256);
+}
+
+void MainWindow::clearClipboardIfOwner()
+{
+    // Reference: MFC ClearClipboardIfOwner
+    QClipboard* clipboard = QApplication::clipboard();
+    QString clipboardText = clipboard->text();
+
+    // Check if we still own the clipboard by comparing hashes
+    QByteArray currentHash = QCryptographicHash::hash(
+        clipboardText.toUtf8(), QCryptographicHash::Sha256);
+
+    if (currentHash == m_clipboardHash) {
+        // We own it, clear it
+        clipboard->clear();
+        m_statusLabel->setText(tr("Clipboard cleared."));
+    }
+
+    // Clear our hash
+    m_clipboardHash.clear();
+}
+
+void MainWindow::startClipboardTimer()
+{
+    // Reference: MFC sets m_nClipboardCountdown to m_dwClipboardSecs
+    m_clipboardCountdown = m_clipboardTimeoutSecs;
+
+    // Start the timer if not already running
+    if (!m_clipboardTimer->isActive()) {
+        m_clipboardTimer->start();
+    }
+}
+
+void MainWindow::onClipboardTimer()
+{
+    // Reference: MFC OnTimer APPWND_TIMER_ID handler
+    if (m_clipboardCountdown == -1) {
+        // Timer not active for clipboard
+        return;
+    }
+
+    --m_clipboardCountdown;
+
+    if (m_clipboardCountdown == -1) {
+        // Time to clear clipboard
+        clearClipboardIfOwner();
+        m_clipboardTimer->stop();
+    }
+    else if (m_clipboardCountdown == 0) {
+        m_statusLabel->setText(tr("Clipboard cleared."));
+    }
+    else {
+        // Update status with countdown
+        m_statusLabel->setText(
+            tr("Field copied to clipboard. Clipboard will be cleared in %1 seconds.")
+            .arg(m_clipboardCountdown));
+    }
 }
