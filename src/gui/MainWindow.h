@@ -38,6 +38,8 @@ public:
 protected:
     // Window events
     void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;  // For minimize detection
+    bool eventFilter(QObject *obj, QEvent *event) override;  // For activity tracking
 
 private slots:
     // File menu
@@ -46,6 +48,7 @@ private slots:
     void onFileSave();
     void onFileSaveAs();
     void onFileClose();
+    void onFileLockWorkspace();
     void onFileExit();
 
     // Edit menu
@@ -81,6 +84,9 @@ private slots:
     // Clipboard timer
     void onClipboardTimer();
 
+    // Inactivity timer
+    void onInactivityTimer();
+
 private:
     // UI setup
     void setupUi();
@@ -99,6 +105,10 @@ private:
     bool closeDatabase();
     bool confirmSaveChanges();
 
+    // Lock/Unlock operations
+    void lockWorkspace();
+    bool unlockWorkspace();
+
     // UI updates
     void updateWindowTitle();
     void updateActions();
@@ -109,6 +119,10 @@ private:
     void copyToClipboard(const QString &text);
     void clearClipboardIfOwner();
     void startClipboardTimer();
+
+    // Inactivity tracking
+    void resetInactivityTimer();
+    void startInactivityTimer();
 
     // Members
     PwManager *m_pwManager;
@@ -128,6 +142,7 @@ private:
     QAction *m_actionFileSave;
     QAction *m_actionFileSaveAs;
     QAction *m_actionFileClose;
+    QAction *m_actionFileLockWorkspace;
     QAction *m_actionFileExit;
 
     // Actions - Edit
@@ -159,12 +174,17 @@ private:
     QString m_currentFilePath;
     bool m_isModified;
     bool m_hasDatabase;
+    bool m_isLocked;
 
     // Clipboard management
     QTimer *m_clipboardTimer;
     int m_clipboardCountdown;
     QByteArray m_clipboardHash;
     int m_clipboardTimeoutSecs;
+
+    // Inactivity management
+    QTimer *m_inactivityTimer;
+    int m_inactivityTimeoutMs;
 };
 
 #endif // MAINWINDOW_H

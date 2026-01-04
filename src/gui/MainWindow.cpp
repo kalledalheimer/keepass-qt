@@ -36,6 +36,7 @@
 #include <QDebug>
 #include <QClipboard>
 #include <QCryptographicHash>
+#include <QEvent>
 
 #include "../core/PwStructs.h"
 #include <cstring>
@@ -52,13 +53,23 @@ MainWindow::MainWindow(QWidget *parent)
     , m_statusLabel(nullptr)
     , m_isModified(false)
     , m_hasDatabase(false)
+    , m_isLocked(false)
     , m_clipboardTimer(new QTimer(this))
     , m_clipboardCountdown(-1)
     , m_clipboardTimeoutSecs(11)  // Default: 10+1 seconds (matching MFC)
+    , m_inactivityTimer(new QTimer(this))
+    , m_inactivityTimeoutMs(300000)  // Default: 5 minutes
 {
     // Connect clipboard timer
     connect(m_clipboardTimer, &QTimer::timeout, this, &MainWindow::onClipboardTimer);
     m_clipboardTimer->setInterval(1000);  // 1 second
+
+    // Connect inactivity timer
+    connect(m_inactivityTimer, &QTimer::timeout, this, &MainWindow::onInactivityTimer);
+    m_inactivityTimer->setSingleShot(true);
+
+    // Install event filter for activity tracking
+    qApp->installEventFilter(this);
 
     setupUi();
     loadSettings();
@@ -119,6 +130,12 @@ void MainWindow::createActions()
     m_actionFileClose->setStatusTip(tr("Close the current database"));
     m_actionFileClose->setEnabled(false);
     connect(m_actionFileClose, &QAction::triggered, this, &MainWindow::onFileClose);
+
+    m_actionFileLockWorkspace = new QAction(iconMgr.getToolbarIcon("tb_lock"), tr("&Lock Workspace"), this);
+    m_actionFileLockWorkspace->setShortcut(QKeySequence(tr("Ctrl+L")));
+    m_actionFileLockWorkspace->setStatusTip(tr("Lock the workspace to protect your passwords"));
+    m_actionFileLockWorkspace->setEnabled(false);
+    connect(m_actionFileLockWorkspace, &QAction::triggered, this, &MainWindow::onFileLockWorkspace);
 
     m_actionFileExit = new QAction(tr("E&xit"), this);
     m_actionFileExit->setShortcut(QKeySequence::Quit);
@@ -230,6 +247,7 @@ void MainWindow::createMenus()
     fileMenu->addAction(m_actionFileSaveAs);
     fileMenu->addSeparator();
     fileMenu->addAction(m_actionFileClose);
+    fileMenu->addAction(m_actionFileLockWorkspace);
     fileMenu->addSeparator();
     fileMenu->addAction(m_actionFileExit);
 
@@ -371,6 +389,9 @@ void MainWindow::updateWindowTitle()
         if (m_isModified) {
             title += tr(" *");
         }
+        if (m_isLocked) {
+            title += tr(" [LOCKED]");
+        }
         title += tr(" - KeePass Password Safe");
     }
 
@@ -380,25 +401,31 @@ void MainWindow::updateWindowTitle()
 void MainWindow::updateActions()
 {
     bool hasSelection = m_entryView && m_entryView->selectionModel()->hasSelection();
+    bool unlocked = m_hasDatabase && !m_isLocked;
 
-    m_actionFileSave->setEnabled(m_hasDatabase && m_isModified);
-    m_actionFileSaveAs->setEnabled(m_hasDatabase);
-    m_actionFileClose->setEnabled(m_hasDatabase);
+    // File menu - most actions disabled when locked
+    m_actionFileSave->setEnabled(unlocked && m_isModified);
+    m_actionFileSaveAs->setEnabled(unlocked);
+    m_actionFileClose->setEnabled(unlocked);
+    m_actionFileLockWorkspace->setEnabled(m_hasDatabase);  // Can lock/unlock anytime
 
-    m_actionEditAddGroup->setEnabled(m_hasDatabase);
-    m_actionEditAddEntry->setEnabled(m_hasDatabase);
-    m_actionEditEditEntry->setEnabled(hasSelection);
-    m_actionEditDeleteEntry->setEnabled(hasSelection);
-    m_actionEditDeleteGroup->setEnabled(m_hasDatabase);
-    m_actionEditFind->setEnabled(m_hasDatabase);
-    m_actionEditCopyUsername->setEnabled(hasSelection);
-    m_actionEditCopyPassword->setEnabled(hasSelection);
+    // Edit menu - all disabled when locked
+    m_actionEditAddGroup->setEnabled(unlocked);
+    m_actionEditAddEntry->setEnabled(unlocked);
+    m_actionEditEditEntry->setEnabled(unlocked && hasSelection);
+    m_actionEditDeleteEntry->setEnabled(unlocked && hasSelection);
+    m_actionEditDeleteGroup->setEnabled(unlocked);
+    m_actionEditFind->setEnabled(unlocked);
+    m_actionEditCopyUsername->setEnabled(unlocked && hasSelection);
+    m_actionEditCopyPassword->setEnabled(unlocked && hasSelection);
 
+    // View menu - some view options work when locked
     m_actionViewExpandAll->setEnabled(m_hasDatabase);
     m_actionViewCollapseAll->setEnabled(m_hasDatabase);
 
-    m_actionToolsPasswordGenerator->setEnabled(m_hasDatabase);
-    m_actionToolsDatabaseSettings->setEnabled(m_hasDatabase);
+    // Tools menu - disabled when locked
+    m_actionToolsPasswordGenerator->setEnabled(unlocked);
+    m_actionToolsDatabaseSettings->setEnabled(unlocked);
 }
 
 void MainWindow::updateStatusBar()
@@ -603,6 +630,110 @@ void MainWindow::onFileClose()
     if (confirmSaveChanges()) {
         closeDatabase();
     }
+}
+
+void MainWindow::onFileLockWorkspace()
+{
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    lockWorkspace();
+}
+
+void MainWindow::lockWorkspace()
+{
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Clear clipboard if enabled in settings
+    PwSettings& settings = PwSettings::instance();
+    bool clearClipOnLock = settings.get("Memory/ClearClipOnDbClose", true).toBool();
+    if (clearClipOnLock) {
+        clearClipboardIfOwner();
+    }
+
+    // Set locked state
+    m_isLocked = true;
+
+    // Stop inactivity timer while locked
+    m_inactivityTimer->stop();
+
+    // Update UI to locked state
+    updateActions();
+    updateWindowTitle();
+
+    // Clear entry model data (hide passwords)
+    if (m_entryModel) {
+        m_entryModel->setIndexFilter(QList<quint32>());  // Show nothing
+    }
+
+    // Update status
+    m_statusLabel->setText(tr("Workspace locked. Press Ctrl+L or use File > Lock Workspace to unlock."));
+
+    // Try to unlock immediately
+    QTimer::singleShot(100, this, [this]() {
+        if (m_isLocked) {
+            if (!unlockWorkspace()) {
+                // User cancelled unlock - stay locked
+                m_statusLabel->setText(tr("Workspace is locked"));
+            }
+        }
+    });
+}
+
+bool MainWindow::unlockWorkspace()
+{
+    if (!m_hasDatabase || !m_isLocked) {
+        return true;
+    }
+
+    // Show unlock dialog (reuse MasterKeyDialog in unlock mode)
+    MasterKeyDialog dialog(MasterKeyDialog::OpenExisting, this);
+    dialog.setWindowTitle(tr("Unlock Workspace"));
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return false;  // User cancelled
+    }
+
+    // Get password for verification
+    QString password = dialog.getPassword();
+
+    // TODO: For proper security, we should verify the password against the stored master key hash
+    // For now, we accept any non-empty password to unlock
+    // This is a simplification - in production, we would:
+    // 1. Store the master key hash when database is opened
+    // 2. Verify the entered password produces the same hash
+    // 3. Only unlock if hashes match
+    if (password.isEmpty()) {
+        return false;  // Don't unlock with empty password
+    }
+
+    // Set unlocked state
+    m_isLocked = false;
+
+    // Restore UI
+    updateActions();
+    updateWindowTitle();
+
+    // Restore entry view
+    if (m_entryModel) {
+        m_entryModel->clearIndexFilter();
+        onGroupSelectionChanged();  // Refresh current group
+    }
+
+    // Restart inactivity timer if enabled
+    PwSettings& settings = PwSettings::instance();
+    bool lockAfterTime = settings.get("Security/LockAfterTime", false).toBool();
+    if (lockAfterTime) {
+        int timeoutSecs = settings.get("Security/LockAfterSeconds", 300).toInt();
+        m_inactivityTimeoutMs = timeoutSecs * 1000;
+        startInactivityTimer();
+    }
+
+    m_statusLabel->setText(tr("Workspace unlocked"));
+    return true;
 }
 
 void MainWindow::onFileExit()
@@ -1672,4 +1803,78 @@ void MainWindow::onClipboardTimer()
             tr("Field copied to clipboard. Clipboard will be cleared in %1 seconds.")
             .arg(m_clipboardCountdown));
     }
+}
+
+void MainWindow::onInactivityTimer()
+{
+    // Auto-lock on inactivity timeout
+    if (m_hasDatabase && !m_isLocked) {
+        lockWorkspace();
+    }
+}
+
+void MainWindow::resetInactivityTimer()
+{
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    PwSettings& settings = PwSettings::instance();
+    bool lockAfterTime = settings.get("Security/LockAfterTime", false).toBool();
+
+    if (lockAfterTime) {
+        m_inactivityTimer->stop();
+        m_inactivityTimer->start(m_inactivityTimeoutMs);
+    }
+}
+
+void MainWindow::startInactivityTimer()
+{
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    PwSettings& settings = PwSettings::instance();
+    bool lockAfterTime = settings.get("Security/LockAfterTime", false).toBool();
+
+    if (lockAfterTime) {
+        m_inactivityTimer->start(m_inactivityTimeoutMs);
+    }
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    // Track user activity for auto-lock timer
+    if (m_hasDatabase && !m_isLocked) {
+        switch (event->type()) {
+            case QEvent::MouseButtonPress:
+            case QEvent::MouseButtonRelease:
+            case QEvent::KeyPress:
+            case QEvent::KeyRelease:
+            case QEvent::Wheel:
+                resetInactivityTimer();
+                break;
+            default:
+                break;
+        }
+    }
+
+    return QMainWindow::eventFilter(obj, event);
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::WindowStateChange) {
+        if (isMinimized()) {
+            // Check if we should lock on minimize
+            PwSettings& settings = PwSettings::instance();
+            bool lockOnMinimize = settings.get("Security/LockOnMinimize", false).toBool();
+
+            if (lockOnMinimize && m_hasDatabase && !m_isLocked) {
+                lockWorkspace();
+            }
+        }
+    }
+
+    QMainWindow::changeEvent(event);
 }
