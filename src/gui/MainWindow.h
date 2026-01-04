@@ -49,6 +49,7 @@ private slots:
     void onFileSaveAs();
     void onFileClose();
     void onFileLockWorkspace();
+    void onFileChangeMasterKey();
     void onFileExit();
 
     // Edit menu
@@ -143,6 +144,7 @@ private:
     QAction *m_actionFileSaveAs;
     QAction *m_actionFileClose;
     QAction *m_actionFileLockWorkspace;
+    QAction *m_actionFileChangeMasterKey;
     QAction *m_actionFileExit;
 
     // Actions - Edit

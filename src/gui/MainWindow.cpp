@@ -6,6 +6,7 @@
 #include "GroupModel.h"
 #include "EntryModel.h"
 #include "MasterKeyDialog.h"
+#include "ChangeMasterKeyDialog.h"
 #include "AddGroupDialog.h"
 #include "AddEntryDialog.h"
 #include "FindDialog.h"
@@ -137,6 +138,11 @@ void MainWindow::createActions()
     m_actionFileLockWorkspace->setEnabled(false);
     connect(m_actionFileLockWorkspace, &QAction::triggered, this, &MainWindow::onFileLockWorkspace);
 
+    m_actionFileChangeMasterKey = new QAction(tr("Change &Master Key..."), this);
+    m_actionFileChangeMasterKey->setStatusTip(tr("Change the master password for this database"));
+    m_actionFileChangeMasterKey->setEnabled(false);
+    connect(m_actionFileChangeMasterKey, &QAction::triggered, this, &MainWindow::onFileChangeMasterKey);
+
     m_actionFileExit = new QAction(tr("E&xit"), this);
     m_actionFileExit->setShortcut(QKeySequence::Quit);
     m_actionFileExit->setStatusTip(tr("Exit the application"));
@@ -248,6 +254,7 @@ void MainWindow::createMenus()
     fileMenu->addSeparator();
     fileMenu->addAction(m_actionFileClose);
     fileMenu->addAction(m_actionFileLockWorkspace);
+    fileMenu->addAction(m_actionFileChangeMasterKey);
     fileMenu->addSeparator();
     fileMenu->addAction(m_actionFileExit);
 
@@ -408,6 +415,7 @@ void MainWindow::updateActions()
     m_actionFileSaveAs->setEnabled(unlocked);
     m_actionFileClose->setEnabled(unlocked);
     m_actionFileLockWorkspace->setEnabled(m_hasDatabase);  // Can lock/unlock anytime
+    m_actionFileChangeMasterKey->setEnabled(unlocked);  // Can only change when unlocked
 
     // Edit menu - all disabled when locked
     m_actionEditAddGroup->setEnabled(unlocked);
@@ -734,6 +742,48 @@ bool MainWindow::unlockWorkspace()
 
     m_statusLabel->setText(tr("Workspace unlocked"));
     return true;
+}
+
+void MainWindow::onFileChangeMasterKey()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFileChangeKey
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show Change Master Key dialog
+    ChangeMasterKeyDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("Master key change cancelled"));
+        return;
+    }
+
+    QString newPassword = dialog.getNewPassword();
+
+    // Set the new master key
+    int result = m_pwManager->setMasterKey(newPassword, true, "", false, "");
+    if (result != PWE_SUCCESS) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to set new master password.\n\nError code: %1").arg(result));
+        m_statusLabel->setText(tr("Failed to change master key"));
+        return;
+    }
+
+    // Save the database with the new key
+    // This will re-encrypt the database with the new master password
+    if (!saveDatabase()) {
+        QMessageBox::warning(this, tr("Warning"),
+                           tr("Master key changed, but failed to save database.\n\n"
+                              "Please save the database manually to apply the new password."));
+        m_statusLabel->setText(tr("Master key changed (save failed)"));
+        return;
+    }
+
+    // Success
+    QMessageBox::information(this, tr("Success"),
+                           tr("Master password changed successfully.\n\n"
+                              "The database has been saved with the new password."));
+    m_statusLabel->setText(tr("Master key changed successfully"));
 }
 
 void MainWindow::onFileExit()
