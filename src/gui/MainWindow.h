@@ -50,6 +50,8 @@ private slots:
     void onFileClose();
     void onFileLockWorkspace();
     void onFileChangeMasterKey();
+    void onFileExportCsv();
+    void onFileImportCsv();
     void onFileExit();
 
     // Edit menu
@@ -145,6 +147,8 @@ private:
     QAction *m_actionFileClose;
     QAction *m_actionFileLockWorkspace;
     QAction *m_actionFileChangeMasterKey;
+    QAction *m_actionFileExportCsv;
+    QAction *m_actionFileImportCsv;
     QAction *m_actionFileExit;
 
     // Actions - Edit

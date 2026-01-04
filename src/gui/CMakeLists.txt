@@ -27,6 +27,10 @@ add_library(keepass-gui STATIC
     DatabaseSettingsDialog.h
     OptionsDialog.cpp
     OptionsDialog.h
+    CsvExportDialog.cpp
+    CsvExportDialog.h
+    CsvImportDialog.cpp
+    CsvImportDialog.h
 
     # Icon management
     IconManager.cpp

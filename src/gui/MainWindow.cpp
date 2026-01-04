@@ -13,10 +13,13 @@
 #include "PasswordGeneratorDialog.h"
 #include "DatabaseSettingsDialog.h"
 #include "OptionsDialog.h"
+#include "CsvExportDialog.h"
+#include "CsvImportDialog.h"
 #include "IconManager.h"
 #include "../core/PwManager.h"
 #include "../core/platform/PwSettings.h"
 #include "../core/util/PwUtil.h"
+#include "../core/util/CsvUtil.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -143,6 +146,16 @@ void MainWindow::createActions()
     m_actionFileChangeMasterKey->setEnabled(false);
     connect(m_actionFileChangeMasterKey, &QAction::triggered, this, &MainWindow::onFileChangeMasterKey);
 
+    m_actionFileExportCsv = new QAction(tr("Export to &CSV..."), this);
+    m_actionFileExportCsv->setStatusTip(tr("Export database entries to CSV file"));
+    m_actionFileExportCsv->setEnabled(false);
+    connect(m_actionFileExportCsv, &QAction::triggered, this, &MainWindow::onFileExportCsv);
+
+    m_actionFileImportCsv = new QAction(tr("&Import from CSV..."), this);
+    m_actionFileImportCsv->setStatusTip(tr("Import entries from CSV file"));
+    m_actionFileImportCsv->setEnabled(false);
+    connect(m_actionFileImportCsv, &QAction::triggered, this, &MainWindow::onFileImportCsv);
+
     m_actionFileExit = new QAction(tr("E&xit"), this);
     m_actionFileExit->setShortcut(QKeySequence::Quit);
     m_actionFileExit->setStatusTip(tr("Exit the application"));
@@ -251,6 +264,9 @@ void MainWindow::createMenus()
     fileMenu->addSeparator();
     fileMenu->addAction(m_actionFileSave);
     fileMenu->addAction(m_actionFileSaveAs);
+    fileMenu->addSeparator();
+    fileMenu->addAction(m_actionFileImportCsv);
+    fileMenu->addAction(m_actionFileExportCsv);
     fileMenu->addSeparator();
     fileMenu->addAction(m_actionFileClose);
     fileMenu->addAction(m_actionFileLockWorkspace);
@@ -416,6 +432,8 @@ void MainWindow::updateActions()
     m_actionFileClose->setEnabled(unlocked);
     m_actionFileLockWorkspace->setEnabled(m_hasDatabase);  // Can lock/unlock anytime
     m_actionFileChangeMasterKey->setEnabled(unlocked);  // Can only change when unlocked
+    m_actionFileExportCsv->setEnabled(unlocked);  // Can export when unlocked
+    m_actionFileImportCsv->setEnabled(unlocked);  // Can import when unlocked
 
     // Edit menu - all disabled when locked
     m_actionEditAddGroup->setEnabled(unlocked);
@@ -784,6 +802,111 @@ void MainWindow::onFileChangeMasterKey()
                            tr("Master password changed successfully.\n\n"
                               "The database has been saved with the new password."));
     m_statusLabel->setText(tr("Master key changed successfully"));
+}
+
+void MainWindow::onFileExportCsv()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFileDbSettings
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show export options dialog
+    CsvExportDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("CSV export cancelled"));
+        return;
+    }
+
+    CsvExportOptions options = dialog.getExportOptions();
+
+    // Show file save dialog
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Export to CSV"),
+        QDir::homePath() + "/export.csv",
+        tr("CSV Files (*.csv);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("CSV export cancelled"));
+        return;
+    }
+
+    // Add .csv extension if not present
+    if (!filePath.endsWith(".csv", Qt::CaseInsensitive)) {
+        filePath += ".csv";
+    }
+
+    // Export to CSV
+    QString errorMsg;
+    if (!CsvUtil::exportToCSV(filePath, m_pwManager, options, &errorMsg)) {
+        QMessageBox::critical(this, tr("Export Failed"),
+                            tr("Failed to export to CSV:\n\n%1").arg(errorMsg));
+        m_statusLabel->setText(tr("CSV export failed"));
+        return;
+    }
+
+    // Success
+    QMessageBox::information(this, tr("Export Successful"),
+                           tr("Database exported to CSV successfully:\n\n%1").arg(filePath));
+    m_statusLabel->setText(tr("CSV export successful"));
+}
+
+void MainWindow::onFileImportCsv()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFileImport
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show import options dialog
+    CsvImportDialog dialog(m_pwManager, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("CSV import cancelled"));
+        return;
+    }
+
+    CsvImportOptions options = dialog.getImportOptions();
+
+    // Show file open dialog
+    QString filePath = QFileDialog::getOpenFileName(
+        this,
+        tr("Import from CSV"),
+        QDir::homePath(),
+        tr("CSV Files (*.csv);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("CSV import cancelled"));
+        return;
+    }
+
+    // Import from CSV
+    int entriesImported = 0;
+    QString errorMsg;
+    if (!CsvUtil::importFromCSV(filePath, m_pwManager, options, &entriesImported, &errorMsg)) {
+        QMessageBox::critical(this, tr("Import Failed"),
+                            tr("Failed to import from CSV:\n\n%1").arg(errorMsg));
+        m_statusLabel->setText(tr("CSV import failed"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    updateStatusBar();
+
+    // Success
+    QMessageBox::information(this, tr("Import Successful"),
+                           tr("Imported %n entr(ies) from CSV successfully:\n\n%1", "", entriesImported).arg(filePath));
+    m_statusLabel->setText(tr("Imported %n entr(ies) from CSV", "", entriesImported));
 }
 
 void MainWindow::onFileExit()

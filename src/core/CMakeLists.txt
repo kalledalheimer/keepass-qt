@@ -37,6 +37,8 @@ add_library(keepass-core STATIC
     util/MemUtil.h
     util/PwUtil.cpp
     util/PwUtil.h
+    util/CsvUtil.cpp
+    util/CsvUtil.h
 
     # Password Generator
     PasswordGenerator.cpp
