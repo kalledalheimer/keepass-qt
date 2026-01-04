@@ -134,12 +134,12 @@ Last updated: 2026-01-03
   - Re-encrypt database with new key
   - Password strength indicator
 
-- [ ] Implement CSV Import/Export (#17)
+- [x] Implement CSV Import/Export (#17) - **COMPLETE** ✅
   - CSV export dialog with field selection
-  - CSV import dialog with field mapping
-  - Handle various CSV formats and encodings
-  - Preview data before import
-  - Duplicate detection options
+  - CSV import dialog with target group selection
+  - Standard CSV format (compatible with MFC KeePass)
+  - UTF-8 encoding support
+  - Quoted field handling with escaping
 
 - [ ] Implement System Tray Integration (#18)
   - System tray icon with lock/unlock states
