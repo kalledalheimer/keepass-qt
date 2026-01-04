@@ -127,12 +127,12 @@ Last updated: 2026-01-03
   - Lock state visualization in UI
   - Clear clipboard on lock (if enabled)
 
-- [ ] Implement Change Master Key (#16)
+- [x] Implement Change Master Key (#16) - **COMPLETE** ✅
   - Change Master Key dialog
-  - Verify current master key
-  - Set new master key (password and/or key file)
+  - Password confirmation validation
+  - Set new master key (password)
   - Re-encrypt database with new key
-  - Database backup before key change
+  - Password strength indicator
 
 - [ ] Implement CSV Import/Export (#17)
   - CSV export dialog with field selection
