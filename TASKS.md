@@ -116,6 +116,163 @@ Last updated: 2026-01-03
 
 ---
 
+## 🔴 High Priority - Phase 5: Essential Features
+
+- [ ] Implement Lock/Unlock Workspace (#15)
+  - Lock workspace command (Ctrl+L)
+  - Unlock with master password dialog
+  - Auto-lock after inactivity timer
+  - Lock on minimize (if enabled in settings)
+  - Lock on Windows lock/screensaver
+  - Lock state visualization in UI
+  - Clear clipboard on lock (if enabled)
+
+- [ ] Implement Change Master Key (#16)
+  - Change Master Key dialog
+  - Verify current master key
+  - Set new master key (password and/or key file)
+  - Re-encrypt database with new key
+  - Database backup before key change
+
+- [ ] Implement CSV Import/Export (#17)
+  - CSV export dialog with field selection
+  - CSV import dialog with field mapping
+  - Handle various CSV formats and encodings
+  - Preview data before import
+  - Duplicate detection options
+
+- [ ] Implement System Tray Integration (#18)
+  - System tray icon with lock/unlock states
+  - Tray icon context menu (Restore, Lock, Exit)
+  - Minimize to tray option
+  - Close minimizes to tray option
+  - Single/double-click tray actions
+  - Show tray only when minimized option
+
+- [ ] Implement Binary Attachment Support (#19)
+  - Save attachment to file
+  - Open attachment with default application
+  - View attachment info in entry dialog
+  - Add/replace attachment in entry dialog
+  - Delete attachment
+
+- [ ] Implement Entry Duplication (#20)
+  - Duplicate entry command
+  - Copy all fields except UUID
+  - Generate new timestamps
+  - Place duplicate in same group
+
+- [ ] Implement Visit URL Feature (#21)
+  - Open URL in default browser
+  - URL validation
+  - Context menu and toolbar button
+  - Handle cmd:// URLs specially
+
+**Goal:** Make application production-ready with essential features
+
+**Target:** Phase 5 completion
+
+---
+
+## 🔴 High Priority - Phase 6: Auto-Type
+
+- [ ] Implement Basic Auto-Type (#22)
+  - Keyboard simulation (platform-specific)
+  - Default auto-type sequence: {USERNAME}{TAB}{PASSWORD}{ENTER}
+  - Auto-type for selected entry
+  - Global auto-type hotkey (Ctrl+Alt+A)
+  - Target window detection
+
+- [ ] Implement Auto-Type Configuration (#23)
+  - Custom auto-type sequences per entry
+  - Auto-type sequence editor
+  - Window title matching
+  - Auto-type settings in Options dialog
+  - Auto-type delays and timings
+
+- [ ] Implement Advanced Auto-Type (#24)
+  - Auto-type window associations
+  - Auto-type method selection (minimize vs drop back)
+  - Two-channel auto-type obfuscation
+  - Keyboard layout handling
+
+**Goal:** Implement KeePass signature feature
+
+**Target:** Phase 6 completion
+
+---
+
+## 🟡 Medium Priority - Phase 7: Import/Export & Plugin System
+
+- [ ] Implement Additional Export Formats (#25)
+  - HTML export with templates
+  - XML export
+  - TXT export (plain text)
+  - Print and print preview
+
+- [ ] Implement Additional Import Formats (#26)
+  - CodeWallet import
+  - Password Safe v3 import
+  - KeePass merge (import from another KDB)
+  - Personal Vault import
+
+- [ ] Implement Plugin System (#27)
+  - Plugin architecture and interfaces
+  - Plugin manager dialog
+  - Plugin loading and lifecycle
+  - Plugin menu integration
+  - Plugin SDK documentation
+
+**Goal:** Complete import/export options and extensibility
+
+**Target:** Phase 7 completion
+
+---
+
+## 🟡 Medium Priority - Phase 8: Advanced Features
+
+- [ ] Implement Entry Management Features (#28)
+  - Entry properties viewer (with history)
+  - Mass modify entries dialog
+  - Move entry up/down in list
+  - Entry backup/restore functionality
+  - Field references (reference fields from other entries)
+  - Entry templates
+
+- [ ] Implement View Options (#29)
+  - Column visibility toggles (11 columns)
+  - Hide password/username stars
+  - Auto-sort by column options
+  - Entry view panel (details pane)
+  - Simple TAN view mode
+  - Custom column ordering
+
+- [ ] Implement Group Management Features (#30)
+  - Move group up/down/left/right
+  - Sort groups alphabetically
+  - Add subgroup command
+  - Export group as separate database
+
+- [ ] Implement Database Tools (#31)
+  - Database information viewer
+  - Database repair tool
+  - Show expired entries tool
+  - Show entries expiring soon
+  - TAN Wizard (generate numbered TAN entries)
+
+- [ ] Implement Advanced Dialogs (#32)
+  - Icon picker dialog (custom icons)
+  - Language selection dialog
+  - Update checker dialog
+  - Advanced password generator (pattern-based)
+  - Random entropy collector
+
+**Goal:** Complete advanced features for power users
+
+**Target:** Phase 8 completion
+
+---
+
 ## 🟡 Medium Priority - Phase 1 Polish
 
 - [ ] Create unit tests for crypto primitives (#12)
