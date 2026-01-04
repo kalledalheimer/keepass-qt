@@ -63,6 +63,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_clipboardTimeoutSecs(11)  // Default: 10+1 seconds (matching MFC)
     , m_inactivityTimer(new QTimer(this))
     , m_inactivityTimeoutMs(300000)  // Default: 5 minutes
+    , m_systemTrayIcon(nullptr)
+    , m_trayIconMenu(nullptr)
 {
     // Connect clipboard timer
     connect(m_clipboardTimer, &QTimer::timeout, this, &MainWindow::onClipboardTimer);
@@ -76,6 +78,7 @@ MainWindow::MainWindow(QWidget *parent)
     qApp->installEventFilter(this);
 
     setupUi();
+    createSystemTrayIcon();
     loadSettings();
     updateWindowTitle();
     updateActions();
@@ -2039,10 +2042,19 @@ void MainWindow::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::WindowStateChange) {
         if (isMinimized()) {
-            // Check if we should lock on minimize
+            // Check if we should minimize to tray
             PwSettings& settings = PwSettings::instance();
-            bool lockOnMinimize = settings.get("Security/LockOnMinimize", false).toBool();
+            bool minimizeToTray = settings.get("Interface/MinimizeToTray", false).toBool();
 
+            if (minimizeToTray && m_systemTrayIcon && m_systemTrayIcon->isVisible()) {
+                // Hide window and show in tray
+                hide();
+                event->ignore();
+                return;
+            }
+
+            // Check if we should lock on minimize
+            bool lockOnMinimize = settings.get("Security/LockOnMinimize", false).toBool();
             if (lockOnMinimize && m_hasDatabase && !m_isLocked) {
                 lockWorkspace();
             }
@@ -2050,4 +2062,151 @@ void MainWindow::changeEvent(QEvent *event)
     }
 
     QMainWindow::changeEvent(event);
+}
+
+//==============================================================================
+// System Tray Icon
+//==============================================================================
+
+void MainWindow::createSystemTrayIcon()
+{
+    // Check if system tray is available
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        qWarning("System tray is not available on this system");
+        return;
+    }
+
+    // Create tray icon menu
+    m_trayIconMenu = new QMenu(this);
+
+    // Create tray actions
+    m_actionTrayRestore = new QAction(tr("&Restore"), this);
+    connect(m_actionTrayRestore, &QAction::triggered, this, &MainWindow::onTrayRestore);
+
+    m_actionTrayLock = new QAction(tr("&Lock Workspace"), this);
+    connect(m_actionTrayLock, &QAction::triggered, this, &MainWindow::onTrayLock);
+
+    m_actionTrayExit = new QAction(tr("E&xit"), this);
+    connect(m_actionTrayExit, &QAction::triggered, this, &MainWindow::onTrayExit);
+
+    // Build menu
+    m_trayIconMenu->addAction(m_actionTrayRestore);
+    m_trayIconMenu->addAction(m_actionTrayLock);
+    m_trayIconMenu->addSeparator();
+    m_trayIconMenu->addAction(m_actionTrayExit);
+
+    // Create system tray icon
+    m_systemTrayIcon = new QSystemTrayIcon(this);
+    m_systemTrayIcon->setContextMenu(m_trayIconMenu);
+    m_systemTrayIcon->setToolTip(tr("KeePass Password Safe"));
+
+    // Set initial icon
+    updateTrayIcon();
+
+    // Connect activation signal
+    connect(m_systemTrayIcon, &QSystemTrayIcon::activated,
+            this, &MainWindow::onTrayIconActivated);
+
+    // Initially hide the tray icon (will be shown based on settings)
+    // updateTrayIcon() will be called from loadSettings()
+}
+
+void MainWindow::updateTrayIcon()
+{
+    if (!m_systemTrayIcon) {
+        return;
+    }
+
+    // Update icon based on lock state
+    QIcon icon;
+    if (m_isLocked) {
+        icon = QIcon(":/icons/locked.png");
+        m_systemTrayIcon->setToolTip(tr("KeePass Password Safe [LOCKED]"));
+        m_actionTrayLock->setText(tr("&Unlock Workspace"));
+    } else {
+        icon = QIcon(":/icons/keepass.png");
+        m_systemTrayIcon->setToolTip(tr("KeePass Password Safe"));
+        m_actionTrayLock->setText(tr("&Lock Workspace"));
+    }
+
+    if (!icon.isNull()) {
+        m_systemTrayIcon->setIcon(icon);
+    }
+
+    // Update visibility based on settings
+    PwSettings& settings = PwSettings::instance();
+    bool showTrayOnlyIfTrayed = settings.get("Advanced/ShowTrayOnlyIfTrayed", false).toBool();
+    bool minimizeToTray = settings.get("Interface/MinimizeToTray", false).toBool();
+
+    // Show tray icon if:
+    // - Not using "show only when trayed" mode, OR
+    // - Using "show only when trayed" AND window is hidden/minimized
+    if (!showTrayOnlyIfTrayed || (showTrayOnlyIfTrayed && (!isVisible() || isMinimized()))) {
+        if (minimizeToTray || m_hasDatabase) {
+            m_systemTrayIcon->show();
+        }
+    } else {
+        m_systemTrayIcon->hide();
+    }
+}
+
+void MainWindow::showTrayIcon()
+{
+    if (m_systemTrayIcon) {
+        m_systemTrayIcon->show();
+    }
+}
+
+void MainWindow::hideTrayIcon()
+{
+    if (m_systemTrayIcon) {
+        m_systemTrayIcon->hide();
+    }
+}
+
+void MainWindow::onTrayIconActivated(QSystemTrayIcon::ActivationReason reason)
+{
+    PwSettings& settings = PwSettings::instance();
+    bool singleClickTrayIcon = settings.get("Advanced/SingleClickTrayIcon", false).toBool();
+
+    // Handle activation based on settings
+    if (singleClickTrayIcon) {
+        // Single click to restore
+        if (reason == QSystemTrayIcon::Trigger) {
+            onTrayRestore();
+        }
+    } else {
+        // Double click to restore (default)
+        if (reason == QSystemTrayIcon::DoubleClick) {
+            onTrayRestore();
+        }
+    }
+}
+
+void MainWindow::onTrayRestore()
+{
+    // Restore window from tray
+    show();
+    setWindowState(windowState() & ~Qt::WindowMinimized);
+    raise();
+    activateWindow();
+    updateTrayIcon();
+}
+
+void MainWindow::onTrayLock()
+{
+    if (m_isLocked) {
+        // Unlock
+        unlockWorkspace();
+    } else {
+        // Lock
+        onFileLockWorkspace();
+    }
+    updateTrayIcon();
+}
+
+void MainWindow::onTrayExit()
+{
+    // Exit application
+    close();
 }

@@ -21,6 +21,7 @@
 #include <QLabel>
 #include <QTimer>
 #include <QByteArray>
+#include <QSystemTrayIcon>
 
 // Forward declarations
 class PwManager;
@@ -90,6 +91,12 @@ private slots:
     // Inactivity timer
     void onInactivityTimer();
 
+    // System tray icon
+    void onTrayIconActivated(QSystemTrayIcon::ActivationReason reason);
+    void onTrayRestore();
+    void onTrayLock();
+    void onTrayExit();
+
 private:
     // UI setup
     void setupUi();
@@ -126,6 +133,12 @@ private:
     // Inactivity tracking
     void resetInactivityTimer();
     void startInactivityTimer();
+
+    // System tray
+    void createSystemTrayIcon();
+    void updateTrayIcon();
+    void showTrayIcon();
+    void hideTrayIcon();
 
     // Members
     PwManager *m_pwManager;
@@ -191,6 +204,13 @@ private:
     // Inactivity management
     QTimer *m_inactivityTimer;
     int m_inactivityTimeoutMs;
+
+    // System tray
+    QSystemTrayIcon *m_systemTrayIcon;
+    QMenu *m_trayIconMenu;
+    QAction *m_actionTrayRestore;
+    QAction *m_actionTrayLock;
+    QAction *m_actionTrayExit;
 };
 
 #endif // MAINWINDOW_H
