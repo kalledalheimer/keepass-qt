@@ -1066,6 +1066,26 @@ void MainWindow::onEditAddEntry()
         return;
     }
 
+    // Process attachment if one was set
+    if (dialog.isAttachmentModified()) {
+        QString attachmentPath = dialog.getAttachmentPath();
+
+        if (!attachmentPath.isEmpty()) {
+            // Find the newly added entry (it's the last one)
+            quint32 numEntries = m_pwManager->getNumberOfEntries();
+            if (numEntries > 0) {
+                PW_ENTRY* newEntry = m_pwManager->getEntry(numEntries - 1);
+                if (newEntry) {
+                    QString errorMsg;
+                    if (!PwUtil::attachFileAsBinaryData(newEntry, attachmentPath, &errorMsg)) {
+                        QMessageBox::warning(this, tr("Warning"),
+                                           tr("Entry added but failed to attach file:\n%1").arg(errorMsg));
+                    }
+                }
+            }
+        }
+    }
+
     // Update UI
     m_isModified = true;
     refreshModels();
@@ -1205,6 +1225,26 @@ void MainWindow::onEditEditEntry()
                             tr("Failed to update entry."));
         m_statusLabel->setText(tr("Failed to update entry"));
         return;
+    }
+
+    // Process attachment changes
+    if (dialog.isAttachmentModified()) {
+        QString attachmentPath = dialog.getAttachmentPath();
+        PW_ENTRY* updatedEntry = m_pwManager->getEntry(entryIndex);
+
+        if (updatedEntry) {
+            if (!attachmentPath.isEmpty()) {
+                // Attach new file
+                QString errorMsg;
+                if (!PwUtil::attachFileAsBinaryData(updatedEntry, attachmentPath, &errorMsg)) {
+                    QMessageBox::warning(this, tr("Warning"),
+                                       tr("Entry updated but failed to attach file:\n%1").arg(errorMsg));
+                }
+            } else {
+                // Remove attachment
+                PwUtil::removeBinaryData(updatedEntry);
+            }
+        }
     }
 
     // Update UI

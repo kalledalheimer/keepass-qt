@@ -53,11 +53,20 @@ public:
     PW_TIME getExpirationTime() const;
     bool hasExpiration() const;
 
+    // Attachment getters
+    QString getAttachmentPath() const { return m_attachmentPath; }
+    bool isAttachmentModified() const { return m_attachmentModified; }
+
 private slots:
     void onPasswordChanged();
     void onShowPasswordToggled(bool checked);
     void onExpiresToggled(bool checked);
     void validateAndAccept();
+
+    // Attachment slots
+    void onSetAttachment();
+    void onSaveAttachment();
+    void onRemoveAttachment();
 
 private:
     void setupUi();
@@ -65,6 +74,7 @@ private:
     void populateGroupCombo();
     void populateFromEntry(PW_ENTRY *entry);
     QString generateRandomPassword();
+    void updateAttachmentControls();
 
     // UI components
     QComboBox *m_groupCombo;
@@ -81,11 +91,22 @@ private:
     QPushButton *m_okButton;
     QPushButton *m_cancelButton;
 
+    // Attachment UI
+    QLineEdit *m_attachmentEdit;
+    QPushButton *m_setAttachmentButton;
+    QPushButton *m_saveAttachmentButton;
+    QPushButton *m_removeAttachmentButton;
+
     // Data
     PwManager *m_pwManager;
     Mode m_mode;
     quint32 m_selectedGroupId;  // For Add mode
     quint32 m_entryIndex;       // For Edit mode
+
+    // Attachment state
+    QString m_attachmentPath;      // Path to file when setting new attachment
+    QString m_originalAttachment;  // Original attachment description (for edit mode)
+    bool m_attachmentModified;     // Track if attachment was changed
 };
 
 #endif // ADDENTRYDIALOG_H

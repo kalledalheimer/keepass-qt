@@ -50,6 +50,30 @@ public:
     /// Returns: -1 if t1 < t2, 0 if equal, 1 if t1 > t2
     static int compareTime(const PW_TIME* t1, const PW_TIME* t2);
 
+    //==========================================================================
+    // Binary Attachment Functions
+    //==========================================================================
+
+    /// Attach a file as binary data to an entry
+    /// @param entry Entry to attach file to
+    /// @param filePath Path to file to attach
+    /// @param errorMsg Error message output (optional)
+    /// @return true on success, false on failure
+    static bool attachFileAsBinaryData(PW_ENTRY* entry, const QString& filePath,
+                                      QString* errorMsg = nullptr);
+
+    /// Save binary data from entry to a file
+    /// @param entry Entry containing binary data
+    /// @param filePath Path where to save the file
+    /// @param errorMsg Error message output (optional)
+    /// @return true on success, false on failure
+    static bool saveBinaryData(const PW_ENTRY* entry, const QString& filePath,
+                               QString* errorMsg = nullptr);
+
+    /// Remove binary attachment from an entry
+    /// @param entry Entry to remove attachment from
+    static void removeBinaryData(PW_ENTRY* entry);
+
 private:
     PwUtil() = delete;  // Static class, no instantiation
 };

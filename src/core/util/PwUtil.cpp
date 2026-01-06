@@ -6,6 +6,9 @@
 */
 
 #include "PwUtil.h"
+#include <QFile>
+#include <QFileInfo>
+#include <cstring>
 
 QDateTime PwUtil::pwTimeToDateTime(const PW_TIME* pTime)
 {
@@ -157,4 +160,131 @@ int PwUtil::compareTime(const PW_TIME* t1, const PW_TIME* t2)
     if (t1->btSecond > t2->btSecond) return 1;
 
     return 0;  // They are exactly the same
+}
+
+//==============================================================================
+// Binary Attachment Functions
+//==============================================================================
+
+bool PwUtil::attachFileAsBinaryData(PW_ENTRY* entry, const QString& filePath,
+                                    QString* errorMsg)
+{
+    if (!entry) {
+        if (errorMsg) *errorMsg = "Invalid entry";
+        return false;
+    }
+
+    if (filePath.isEmpty()) {
+        if (errorMsg) *errorMsg = "File path is empty";
+        return false;
+    }
+
+    // Open file
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (errorMsg) *errorMsg = QString("Cannot open file for reading: %1").arg(file.errorString());
+        return false;
+    }
+
+    // Get file size
+    qint64 fileSize = file.size();
+    if (fileSize <= 0) {
+        file.close();
+        if (errorMsg) *errorMsg = "File is empty or cannot read size";
+        return false;
+    }
+
+    // Check maximum file size (512 MB, matching KeePass 2.x)
+    const qint64 maxSize = 512LL * 1024LL * 1024LL;
+    if (fileSize > maxSize) {
+        file.close();
+        if (errorMsg) *errorMsg = QString("File too large (max %1 MB)").arg(maxSize / (1024 * 1024));
+        return false;
+    }
+
+    // Extract filename from path
+    QFileInfo fileInfo(filePath);
+    QString fileName = fileInfo.fileName();
+    QByteArray fileNameUtf8 = fileName.toUtf8();
+
+    // Read file data
+    QByteArray fileData = file.readAll();
+    file.close();
+
+    if (fileData.size() != fileSize) {
+        if (errorMsg) *errorMsg = "Failed to read complete file";
+        return false;
+    }
+
+    // Remove old attachment if present
+    removeBinaryData(entry);
+
+    // Allocate and set binary description (filename)
+    entry->pszBinaryDesc = new char[fileNameUtf8.size() + 1];
+    std::strcpy(entry->pszBinaryDesc, fileNameUtf8.constData());
+
+    // Allocate and copy binary data
+    entry->uBinaryDataLen = static_cast<quint32>(fileSize);
+    entry->pBinaryData = new quint8[entry->uBinaryDataLen];
+    std::memcpy(entry->pBinaryData, fileData.constData(), entry->uBinaryDataLen);
+
+    return true;
+}
+
+bool PwUtil::saveBinaryData(const PW_ENTRY* entry, const QString& filePath,
+                            QString* errorMsg)
+{
+    if (!entry) {
+        if (errorMsg) *errorMsg = "Invalid entry";
+        return false;
+    }
+
+    if (!entry->pszBinaryDesc || entry->pszBinaryDesc[0] == '\0') {
+        if (errorMsg) *errorMsg = "No attachment present";
+        return false;
+    }
+
+    if (filePath.isEmpty()) {
+        if (errorMsg) *errorMsg = "File path is empty";
+        return false;
+    }
+
+    // Open file for writing
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        if (errorMsg) *errorMsg = QString("Cannot open file for writing: %1").arg(file.errorString());
+        return false;
+    }
+
+    // Write binary data
+    if (entry->uBinaryDataLen > 0 && entry->pBinaryData) {
+        qint64 written = file.write(reinterpret_cast<const char*>(entry->pBinaryData),
+                                    entry->uBinaryDataLen);
+        if (written != static_cast<qint64>(entry->uBinaryDataLen)) {
+            file.close();
+            if (errorMsg) *errorMsg = "Failed to write complete file";
+            return false;
+        }
+    }
+
+    file.close();
+    return true;
+}
+
+void PwUtil::removeBinaryData(PW_ENTRY* entry)
+{
+    if (!entry)
+        return;
+
+    // Delete old binary data
+    delete[] entry->pBinaryData;
+    entry->pBinaryData = nullptr;
+    entry->uBinaryDataLen = 0;
+
+    // Delete old description
+    delete[] entry->pszBinaryDesc;
+
+    // Set empty description
+    entry->pszBinaryDesc = new char[1];
+    entry->pszBinaryDesc[0] = '\0';
 }

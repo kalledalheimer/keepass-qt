@@ -13,6 +13,9 @@
 #include <QMessageBox>
 #include <QDateTime>
 #include <QRandomGenerator>
+#include <QFileDialog>
+#include <QDesktopServices>
+#include <QUrl>
 
 AddEntryDialog::AddEntryDialog(PwManager *pwManager, Mode mode, quint32 idValue, QWidget *parent)
     : QDialog(parent)
@@ -20,6 +23,7 @@ AddEntryDialog::AddEntryDialog(PwManager *pwManager, Mode mode, quint32 idValue,
     , m_mode(mode)
     , m_selectedGroupId(mode == AddMode ? idValue : 0)
     , m_entryIndex(mode == EditMode ? idValue : 0)
+    , m_attachmentModified(false)
 {
     setupUi();
     setWindowTitle(mode == AddMode ? tr("Add Entry") : tr("Edit Entry"));
@@ -52,7 +56,13 @@ AddEntryDialog::AddEntryDialog(PwManager *pwManager, Mode mode, quint32 idValue,
     connect(m_okButton, &QPushButton::clicked, this, &AddEntryDialog::validateAndAccept);
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
 
+    // Connect attachment signals
+    connect(m_setAttachmentButton, &QPushButton::clicked, this, &AddEntryDialog::onSetAttachment);
+    connect(m_saveAttachmentButton, &QPushButton::clicked, this, &AddEntryDialog::onSaveAttachment);
+    connect(m_removeAttachmentButton, &QPushButton::clicked, this, &AddEntryDialog::onRemoveAttachment);
+
     onPasswordChanged();  // Update validation state
+    updateAttachmentControls();  // Update attachment button state
 }
 
 void AddEntryDialog::setupUi()
@@ -138,6 +148,38 @@ void AddEntryDialog::setupUi()
     expirationLayout->addWidget(m_expirationDateTime);
 
     formLayout->addRow(expirationGroup);
+
+    // Attachment group
+    QGroupBox *attachmentGroup = new QGroupBox(tr("Attachment"), this);
+    QVBoxLayout *attachmentLayout = new QVBoxLayout(attachmentGroup);
+
+    // Attachment description (read-only)
+    m_attachmentEdit = new QLineEdit(this);
+    m_attachmentEdit->setReadOnly(true);
+    m_attachmentEdit->setPlaceholderText(tr("No attachment"));
+    attachmentLayout->addWidget(m_attachmentEdit);
+
+    // Attachment buttons
+    QHBoxLayout *attachmentButtonLayout = new QHBoxLayout();
+
+    m_setAttachmentButton = new QPushButton(tr("Set Attachment..."), this);
+    m_setAttachmentButton->setToolTip(tr("Open file and set as attachment"));
+    attachmentButtonLayout->addWidget(m_setAttachmentButton);
+
+    m_saveAttachmentButton = new QPushButton(tr("Save Attachment..."), this);
+    m_saveAttachmentButton->setToolTip(tr("Save attached file to disk"));
+    m_saveAttachmentButton->setEnabled(false);
+    attachmentButtonLayout->addWidget(m_saveAttachmentButton);
+
+    m_removeAttachmentButton = new QPushButton(tr("Remove Attachment"), this);
+    m_removeAttachmentButton->setToolTip(tr("Remove attachment from this entry"));
+    m_removeAttachmentButton->setEnabled(false);
+    attachmentButtonLayout->addWidget(m_removeAttachmentButton);
+
+    attachmentButtonLayout->addStretch();
+    attachmentLayout->addLayout(attachmentButtonLayout);
+
+    formLayout->addRow(attachmentGroup);
 
     mainLayout->addLayout(formLayout);
 
@@ -247,6 +289,14 @@ void AddEntryDialog::populateFromEntry(PW_ENTRY *entry)
         QDateTime expireDateTime = PwUtil::pwTimeToDateTime(&entry->tExpire);
         m_expirationDateTime->setDateTime(expireDateTime);
     }
+
+    // Set attachment
+    if (entry->pszBinaryDesc && entry->pszBinaryDesc[0] != '\0') {
+        m_originalAttachment = QString::fromUtf8(entry->pszBinaryDesc);
+        m_attachmentEdit->setText(m_originalAttachment);
+    }
+
+    updateAttachmentControls();
 }
 
 QString AddEntryDialog::generateRandomPassword()
@@ -375,4 +425,116 @@ PW_TIME AddEntryDialog::getExpirationTime() const
 bool AddEntryDialog::hasExpiration() const
 {
     return m_expiresCheck->isChecked();
+}
+
+//==============================================================================
+// Attachment Functions
+//==============================================================================
+
+void AddEntryDialog::updateAttachmentControls()
+{
+    bool hasAttachment = !m_attachmentEdit->text().isEmpty();
+    bool hasNewAttachment = !m_attachmentPath.isEmpty();
+
+    // Enable "Set Attachment" always
+    m_setAttachmentButton->setEnabled(true);
+
+    // Enable "Save Attachment" only if there's an attachment (original or new)
+    // But NOT if we're about to set a new one (user hasn't confirmed yet)
+    if (m_mode == EditMode && hasAttachment && !hasNewAttachment) {
+        m_saveAttachmentButton->setEnabled(true);
+    } else {
+        m_saveAttachmentButton->setEnabled(false);
+    }
+
+    // Enable "Remove Attachment" if there's an attachment shown
+    m_removeAttachmentButton->setEnabled(hasAttachment || hasNewAttachment);
+}
+
+void AddEntryDialog::onSetAttachment()
+{
+    QString filePath = QFileDialog::getOpenFileName(
+        this,
+        tr("Select File to Attach"),
+        QString(),
+        tr("All Files (*.*)")
+    );
+
+    if (filePath.isEmpty()) {
+        return;  // User cancelled
+    }
+
+    // Check if there's an existing attachment
+    if (!m_attachmentEdit->text().isEmpty()) {
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this,
+            tr("Overwrite?"),
+            tr("There already is a file attached with this entry.\n\nDo you want to overwrite the current attachment?"),
+            QMessageBox::Yes | QMessageBox::No
+        );
+
+        if (reply != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    // Store the file path for processing on accept
+    m_attachmentPath = filePath;
+    m_attachmentModified = true;
+
+    // Extract filename and show in UI
+    QFileInfo fileInfo(filePath);
+    m_attachmentEdit->setText(fileInfo.fileName() + tr(" (pending)"));
+
+    updateAttachmentControls();
+}
+
+void AddEntryDialog::onSaveAttachment()
+{
+    // This only works in Edit mode with an existing attachment
+    if (m_mode != EditMode || m_entryIndex >= m_pwManager->getNumberOfEntries()) {
+        return;
+    }
+
+    PW_ENTRY* entry = m_pwManager->getEntry(m_entryIndex);
+    if (!entry || !entry->pszBinaryDesc || entry->pszBinaryDesc[0] == '\0') {
+        QMessageBox::information(this, tr("Save Attachment"),
+                                tr("There is no file attached with this entry."));
+        return;
+    }
+
+    // Suggest the original filename
+    QString suggestedName = QString::fromUtf8(entry->pszBinaryDesc);
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Save Attachment"),
+        suggestedName,
+        tr("All Files (*.*)")
+    );
+
+    if (filePath.isEmpty()) {
+        return;  // User cancelled
+    }
+
+    // Save the binary data
+    QString errorMsg;
+    if (!PwUtil::saveBinaryData(entry, filePath, &errorMsg)) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to save attachment:\n%1").arg(errorMsg));
+        return;
+    }
+
+    QMessageBox::information(this, tr("Success"),
+                           tr("Attachment saved successfully."));
+}
+
+void AddEntryDialog::onRemoveAttachment()
+{
+    // Clear the attachment field and mark as modified
+    m_attachmentEdit->clear();
+    m_attachmentPath.clear();
+    m_attachmentModified = true;
+
+    updateAttachmentControls();
 }
