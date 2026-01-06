@@ -66,6 +66,7 @@ private slots:
     void onEditCopyUsername();
     void onEditCopyPassword();
     void onEditVisitUrl();
+    void onEditAutoType();
 
     // View menu
     void onViewToolbar();
@@ -180,6 +181,7 @@ private:
     QAction *m_actionEditCopyUsername;
     QAction *m_actionEditCopyPassword;
     QAction *m_actionEditVisitUrl;
+    QAction *m_actionEditAutoType;
 
     // Actions - View
     QAction *m_actionViewToolbar;

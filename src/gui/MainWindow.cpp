@@ -20,6 +20,8 @@
 #include "../core/platform/PwSettings.h"
 #include "../core/util/PwUtil.h"
 #include "../core/util/CsvUtil.h"
+#include "../autotype/AutoTypeSequence.h"
+#include "../autotype/platform/AutoTypePlatform.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -44,6 +46,7 @@
 #include <QDesktopServices>
 #include <QProcess>
 #include <QUrl>
+#include <QThread>
 
 #include "../core/PwStructs.h"
 #include <cstring>
@@ -226,6 +229,12 @@ void MainWindow::createActions()
     m_actionEditVisitUrl->setEnabled(false);
     connect(m_actionEditVisitUrl, &QAction::triggered, this, &MainWindow::onEditVisitUrl);
 
+    m_actionEditAutoType = new QAction(tr("Perform &Auto-Type"), this);
+    m_actionEditAutoType->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_V);
+    m_actionEditAutoType->setStatusTip(tr("Auto-type username and password"));
+    m_actionEditAutoType->setEnabled(false);
+    connect(m_actionEditAutoType, &QAction::triggered, this, &MainWindow::onEditAutoType);
+
     // View menu actions
     m_actionViewToolbar = new QAction(tr("&Toolbar"), this);
     m_actionViewToolbar->setCheckable(true);
@@ -306,6 +315,7 @@ void MainWindow::createMenus()
     editMenu->addAction(m_actionEditCopyUsername);
     editMenu->addAction(m_actionEditCopyPassword);
     editMenu->addAction(m_actionEditVisitUrl);
+    editMenu->addAction(m_actionEditAutoType);
     editMenu->addSeparator();
     editMenu->addAction(m_actionEditFind);
 
@@ -466,6 +476,7 @@ void MainWindow::updateActions()
     m_actionEditCopyUsername->setEnabled(unlocked && hasSelection);
     m_actionEditCopyPassword->setEnabled(unlocked && hasSelection);
     m_actionEditVisitUrl->setEnabled(unlocked && hasSelection);
+    m_actionEditAutoType->setEnabled(unlocked && hasSelection);
 
     // View menu - some view options work when locked
     m_actionViewExpandAll->setEnabled(m_hasDatabase);
@@ -2196,6 +2207,107 @@ void MainWindow::openUrl(const QString& url)
         QMessageBox::critical(this, tr("Error"),
                             tr("Failed to open URL: %1").arg(processedUrl));
     }
+}
+
+void MainWindow::onEditAutoType()
+{
+    // Reference: MFC CPwSafeDlg::OnPwlistAutoType (PwSafeDlg.cpp:10138)
+
+    // Get currently selected entry
+    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+        return;
+    }
+
+    QModelIndex index = m_entryView->selectionModel()->currentIndex();
+    if (!index.isValid()) {
+        return;
+    }
+
+    PW_ENTRY* entry = m_entryModel->getEntry(index);
+    if (!entry) {
+        return;
+    }
+
+    // Create platform auto-type instance
+    QScopedPointer<AutoTypePlatform> autoType(AutoTypePlatform::create());
+    if (!autoType) {
+        QMessageBox::critical(this, tr("Auto-Type"),
+                            tr("Auto-Type is not supported on this platform."));
+        return;
+    }
+
+    // Check if auto-type is available (accessibility permissions on macOS)
+    if (!autoType->isAvailable()) {
+        // Show warning but continue anyway - auto-type will attempt and show result
+        QMessageBox::StandardButton reply = QMessageBox::warning(this, tr("Auto-Type"),
+                           tr("Auto-Type requires accessibility permissions.\n\n"
+                              "On macOS: The app needs to be in:\n"
+                              "System Preferences > Security & Privacy > "
+                              "Privacy > Accessibility\n\n"
+                              "For unsigned apps, you may need to:\n"
+                              "1. Try using auto-type once (it will fail)\n"
+                              "2. Check if KeePass appears in the list\n"
+                              "3. Grant permission and try again\n\n"
+                              "Continue anyway?"),
+                           QMessageBox::Yes | QMessageBox::No);
+
+        if (reply == QMessageBox::No) {
+            return;
+        }
+    }
+
+    // Get auto-type sequence (default: {USERNAME}{TAB}{PASSWORD}{ENTER})
+    QString sequence = AutoTypeSequence::defaultSequence();
+
+    // TODO: Check for custom sequence in entry notes (future feature)
+    // For now, always use default sequence
+
+    // Parse and compile the sequence
+    AutoTypeSequence parser;
+    QList<AutoTypeAction> actions = parser.compile(sequence, entry, m_pwManager);
+
+    if (actions.isEmpty()) {
+        QMessageBox::critical(this, tr("Auto-Type"),
+                            tr("Failed to parse auto-type sequence:\n%1").arg(parser.lastError()));
+        return;
+    }
+
+    // Hide/minimize window before auto-typing
+    // This allows auto-type to work in the previously focused window
+    m_statusLabel->setText(tr("Performing auto-type..."));
+
+    // Process events to ensure status bar updates
+    QApplication::processEvents();
+
+    // Minimize to allow typing in target window
+    showMinimized();
+
+    // Process events to ensure minimize completes
+    QApplication::processEvents();
+
+    // Wait for window to minimize and previous window to activate
+    // Increased delay to ensure proper window switching
+    QThread::msleep(800);
+
+    // Perform auto-type
+    bool success = autoType->performAutoType(actions);
+
+    if (!success) {
+        // Restore window
+        showNormal();
+        activateWindow();
+
+        QMessageBox::critical(this, tr("Auto-Type"),
+                            tr("Auto-Type failed:\n%1").arg(autoType->lastError()));
+        return;
+    }
+
+    // Update last access time
+    PW_TIME tNow;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &tNow);
+    entry->tLastAccess = tNow;
+
+    m_statusLabel->setText(tr("Auto-type completed"));
 }
 
 void MainWindow::startClipboardTimer()

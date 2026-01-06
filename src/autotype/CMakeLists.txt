@@ -1,8 +1,23 @@
-# KeePass Auto-Type System
-add_library(keepass-autotype STATIC
-    # Placeholder (auto-type will be implemented in Phase 5)
-    AutoTypeStub.cpp
+# Auto-Type System
+# Platform-specific keyboard simulation for auto-typing passwords
+
+set(AUTOTYPE_SOURCES
+    AutoTypeSequence.cpp
+    AutoTypeSequence.h
+    platform/AutoTypePlatform.cpp
+    platform/AutoTypePlatform.h
 )
+
+# Platform-specific sources
+if(APPLE)
+    list(APPEND AUTOTYPE_SOURCES
+        platform/AutoTypeMac.cpp
+        platform/AutoTypeMac.h
+    )
+endif()
+
+# Create auto-type library
+add_library(keepass-autotype STATIC ${AUTOTYPE_SOURCES})
 
 target_link_libraries(keepass-autotype
     PUBLIC
@@ -10,31 +25,16 @@ target_link_libraries(keepass-autotype
         Qt${QT_VERSION_MAJOR}::Core
 )
 
+# macOS-specific frameworks
+if(APPLE)
+    target_link_libraries(keepass-autotype
+        PUBLIC
+            "-framework ApplicationServices"
+            "-framework Carbon"
+    )
+endif()
+
 target_include_directories(keepass-autotype
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
-
-# Platform-specific auto-type implementations
-if(WIN32)
-    target_sources(keepass-autotype PRIVATE
-        # platform/AutoTypeWindows.cpp
-        # platform/AutoTypeWindows.h
-    )
-elseif(APPLE)
-    target_sources(keepass-autotype PRIVATE
-        # platform/AutoTypeMac.cpp
-        # platform/AutoTypeMac.h
-    )
-    # macOS requires CoreGraphics framework
-    find_library(COREGRAPHICS_LIBRARY CoreGraphics REQUIRED)
-    target_link_libraries(keepass-autotype PRIVATE ${COREGRAPHICS_LIBRARY})
-else()
-    target_sources(keepass-autotype PRIVATE
-        # platform/AutoTypeX11.cpp
-        # platform/AutoTypeX11.h
-    )
-    # Linux requires X11 and XTest
-    find_package(X11 REQUIRED)
-    target_link_libraries(keepass-autotype PRIVATE ${X11_LIBRARIES} ${X11_XTest_LIB})
-endif()
