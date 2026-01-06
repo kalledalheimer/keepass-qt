@@ -1,10 +1,10 @@
 # MFC to Qt Migration Guide
 
-**Project:** KeePass Password Safe v1.43
-**Target:** Cross-platform Qt application
-**Date:** 2025-12-16
+**Purpose:** Comprehensive guide for migrating Windows/MFC applications to Qt framework
+**Audience:** Developers and LLMs performing MFC-to-Qt migrations
+**Last Updated:** 2026-01-06
 
-This document serves as a comprehensive guide for migrating Windows/MFC applications to Qt, documenting type mappings, coding style conventions, and best practices.
+This document provides reusable patterns, type mappings, coding conventions, and best practices for any MFC-to-Qt migration project.
 
 ---
 
@@ -16,7 +16,10 @@ This document serves as a comprehensive guide for migrating Windows/MFC applicat
 4. [Memory Management](#memory-management)
 5. [Platform Abstraction](#platform-abstraction)
 6. [Common Patterns](#common-patterns)
-7. [Migration Checklist](#migration-checklist)
+7. [Development Guidelines](#development-guidelines)
+8. [Security Best Practices](#security-best-practices)
+9. [Git Workflow](#git-workflow)
+10. [Migration Checklist](#migration-checklist)
 
 ---
 
@@ -396,6 +399,461 @@ Q_ASSERT(pObj != nullptr);
 
 ---
 
+## Development Guidelines
+
+### Coding Standards
+
+**Naming Conventions:**
+```cpp
+// Classes: PascalCase
+class PasswordManager {
+    // ...
+};
+
+// Functions: camelCase
+void processData();
+bool openFile(const QString& path);
+
+// Member variables: m_ prefix + camelCase
+class MyClass {
+private:
+    int m_count;
+    QString m_name;
+    QVector<int> m_items;
+};
+
+// Static variables: s_ prefix + camelCase
+static int s_instanceCount = 0;
+
+// Constants: UPPER_SNAKE_CASE or kCamelCase
+const int MAX_BUFFER_SIZE = 1024;
+constexpr int kMaxBufferSize = 1024;  // Modern C++ style
+
+// QString variables: s prefix (optional convention)
+QString sTitle;
+QString sPassword;
+
+// NOT: Windows-style psz prefix
+// char* pszTitle;  // ❌ Avoid for internal code
+```
+
+**Standard Compliance:**
+- Use C++17 minimum (C++20 preferred for new projects)
+- Enable all compiler warnings (`-Wall -Wextra`)
+- Treat warnings as errors in CI builds
+
+**Code Organization:**
+```cpp
+// Include order:
+// 1. Own header (for .cpp files)
+#include "myclass.h"
+
+// 2. Qt headers (alphabetical)
+#include <QDateTime>
+#include <QFile>
+#include <QString>
+
+// 3. Standard C++ headers
+#include <cstring>
+#include <memory>
+
+// 4. Third-party libraries
+#include <openssl/evp.h>
+```
+
+### Type Usage Guidelines
+
+**Use Qt types for all internal code:**
+
+```cpp
+// ✅ Correct - Qt types
+quint8 byteValue;
+quint16 wordValue;
+quint32 dwordValue;
+quint64 qwordValue;
+bool isValid;
+
+// ❌ Wrong - Windows types
+BYTE byteValue;
+WORD wordValue;
+DWORD dwordValue;
+QWORD qwordValue;
+BOOL isValid;
+```
+
+**Exceptions where Windows types are acceptable:**
+1. **File format compatibility** - When exact binary layout must match:
+   ```cpp
+   // KDB header must use exact sizes
+   struct PW_DBHEADER {
+       DWORD dwSignature1;  // Must be 4 bytes
+       DWORD dwSignature2;
+       // ... other fields matching spec
+   };
+   ```
+
+2. **Third-party library interfaces** - When interfacing with external APIs:
+   ```cpp
+   // Crypto library expects specific types
+   void AES_set_key(const UINT8* key, UINT bits);
+   ```
+
+3. **Temporary during migration** - Mark with TODO comments:
+   ```cpp
+   // TODO: Convert to quint32 after verifying compatibility
+   DWORD legacyCounter;
+   ```
+
+**For all other code:**
+- Member variables → Qt types
+- Function parameters → Qt types
+- Loop counters → Qt types or size_t
+- Local variables → Qt types
+
+### String Handling Guidelines
+
+**Always use QString for internal string handling:**
+
+```cpp
+// ✅ Correct
+QString title;
+QString username;
+QString filePath = QDir::homePath() + "/documents/file.txt";
+
+// ❌ Wrong
+char* pszTitle;
+std::string title;
+TCHAR* pszUsername;
+```
+
+**char* usage (exceptions only):**
+- Binary file I/O (at serialization boundary only)
+- Interfacing with C libraries
+- Convert to QString immediately after reading
+
+**String conversion patterns:**
+```cpp
+// Reading from binary file
+QByteArray utf8Data = file.read(length);
+QString text = QString::fromUtf8(utf8Data);
+
+// Writing to binary file
+QString text = "Hello";
+QByteArray utf8Data = text.toUtf8();
+file.write(utf8Data.constData(), utf8Data.length());
+```
+
+**Naming conventions:**
+- `QString` variables: `sVariableName` or just descriptive name
+- `char*` (file I/O only): `pszFieldName` (legacy boundary only)
+- `QByteArray`: `vVariableName` or descriptive name
+
+### Comments and Documentation
+
+```cpp
+// Good comments explain WHY, not WHAT
+// ❌ Bad: The code itself is obvious
+i++;  // Increment i
+
+// ✅ Good: Explains the reason
+i++;  // Skip null terminator in file format
+
+// Document deviations from original code
+// MFC version used registry; Qt uses QSettings for cross-platform support
+QSettings settings("MyApp", "MyApp");
+
+// Reference original file locations when porting
+// Reference: MFC/KeePassLibCpp/PwManager.cpp:1234
+void unlockPassword(PW_ENTRY* entry) {
+    // ... implementation
+}
+
+// Document security-critical code
+// XOR with session key for memory protection against dumps
+for (quint32 i = 0; i < passwordLen; ++i) {
+    password[i] ^= m_sessionKey[i % 32];
+}
+```
+
+---
+
+## Security Best Practices
+
+### 1. Cryptography
+
+**Never implement custom cryptography:**
+```cpp
+// ❌ Wrong - Custom crypto
+void myEncryptFunction(const uint8_t* data, size_t len) {
+    for (size_t i = 0; i < len; ++i) {
+        data[i] ^= 0x42;  // Insecure!
+    }
+}
+
+// ✅ Correct - Use established libraries
+#include <openssl/evp.h>
+
+void encryptData(const uint8_t* plaintext, size_t len,
+                 uint8_t* ciphertext, const uint8_t* key, const uint8_t* iv)
+{
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key, iv);
+    // ... proper encryption
+    EVP_CIPHER_CTX_free(ctx);
+}
+```
+
+**Use cryptographically secure random numbers:**
+```cpp
+// ❌ Wrong - Not cryptographically secure
+int randomValue = qrand();
+
+// ✅ Correct - Cryptographically secure
+#include <openssl/rand.h>
+
+uint8_t randomBytes[32];
+RAND_bytes(randomBytes, sizeof(randomBytes));
+```
+
+### 2. Secure Memory Handling
+
+**Clear sensitive data from memory:**
+```cpp
+// ❌ Wrong - May be optimized away
+memset(password, 0, passwordLen);
+
+// ✅ Correct - Guaranteed to execute
+#include <openssl/crypto.h>
+OPENSSL_cleanse(password, passwordLen);
+```
+
+**Lock sensitive memory to prevent swapping:**
+```cpp
+#include <sys/mman.h>  // Unix
+// or
+#include <windows.h>   // Windows
+
+class SecureMemory {
+public:
+    SecureMemory(size_t size) : m_data(new uint8_t[size]), m_size(size) {
+        // Lock memory to prevent swapping to disk
+        #ifdef Q_OS_WIN
+            VirtualLock(m_data, m_size);
+        #else
+            mlock(m_data, m_size);
+        #endif
+    }
+
+    ~SecureMemory() {
+        // Clear before unlocking
+        OPENSSL_cleanse(m_data, m_size);
+
+        #ifdef Q_OS_WIN
+            VirtualUnlock(m_data, m_size);
+        #else
+            munlock(m_data, m_size);
+        #endif
+
+        delete[] m_data;
+    }
+
+    // Disable copy, enable move
+    SecureMemory(const SecureMemory&) = delete;
+    SecureMemory& operator=(const SecureMemory&) = delete;
+    SecureMemory(SecureMemory&&) = default;
+    SecureMemory& operator=(SecureMemory&&) = default;
+
+    uint8_t* data() { return m_data; }
+    size_t size() const { return m_size; }
+
+private:
+    uint8_t* m_data;
+    size_t m_size;
+};
+```
+
+### 3. Input Validation
+
+**Always validate external input:**
+```cpp
+bool loadFile(const QString& filePath, QString* errorMsg = nullptr)
+{
+    // Validate path
+    if (filePath.isEmpty()) {
+        if (errorMsg) *errorMsg = "Empty file path";
+        return false;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (errorMsg) *errorMsg = file.errorString();
+        return false;
+    }
+
+    // Validate file size
+    qint64 fileSize = file.size();
+    const qint64 maxSize = 100 * 1024 * 1024;  // 100 MB limit
+    if (fileSize > maxSize) {
+        if (errorMsg) *errorMsg = "File too large";
+        return false;
+    }
+
+    // Read and validate content
+    QByteArray data = file.readAll();
+    if (data.isEmpty() && fileSize > 0) {
+        if (errorMsg) *errorMsg = "Failed to read file";
+        return false;
+    }
+
+    return true;
+}
+```
+
+### 4. Bounds Checking
+
+**Always check array bounds:**
+```cpp
+// ❌ Wrong - No bounds checking
+void processArray(const int* arr, int index) {
+    int value = arr[index];  // May overflow!
+}
+
+// ✅ Correct - With bounds checking
+void processArray(const QVector<int>& arr, int index) {
+    if (index < 0 || index >= arr.size()) {
+        qWarning() << "Index out of bounds:" << index;
+        return;
+    }
+    int value = arr[index];
+}
+
+// ✅ Better - Use at() for automatic bounds checking
+void processArray(const QVector<int>& arr, int index) {
+    try {
+        int value = arr.at(index);  // Throws on out-of-bounds
+    } catch (const std::out_of_range& e) {
+        qWarning() << "Index out of bounds:" << e.what();
+    }
+}
+```
+
+### 5. Compiler Security Flags
+
+**Enable security-hardening compiler flags:**
+```cmake
+# CMakeLists.txt
+if(MSVC)
+    # Windows: Stack protection, DEP, ASLR
+    add_compile_options(/GS /guard:cf)
+    add_link_options(/DYNAMICBASE /NXCOMPAT)
+else()
+    # Unix: Stack protection, fortify source, PIE
+    add_compile_options(
+        -fstack-protector-strong
+        -D_FORTIFY_SOURCE=2
+        -fPIE
+    )
+    add_link_options(-pie)
+endif()
+
+# Enable all warnings
+add_compile_options(-Wall -Wextra -Wpedantic)
+```
+
+---
+
+## Git Workflow
+
+### Branching Strategy
+
+**Feature branches:**
+```bash
+# Create feature branch
+git checkout -b feature/password-generator
+
+# Work on feature...
+git add .
+git commit -m "Implement password generator dialog"
+
+# Merge to main when complete
+git checkout main
+git merge feature/password-generator
+```
+
+**Phase branches for large projects:**
+```bash
+# Create phase branch
+git checkout -b phase-1-core-library
+
+# Work on multiple features within phase
+# Merge phase branch when phase complete
+```
+
+### Commit Messages
+
+**Good commit message format:**
+```
+Short summary (50 chars or less)
+
+Longer explanation if needed. Explain WHY the change was made,
+not WHAT was changed (the diff shows that).
+
+- Reference original MFC files when porting
+- Note any deviations from original implementation
+- Link to issues: Fixes #123
+
+MFC Reference: KeePassLibCpp/PwManager.cpp:1234-1456
+```
+
+**Examples:**
+```bash
+# ✅ Good commit messages
+git commit -m "Add password strength indicator
+
+Implements real-time password quality scoring based on entropy
+calculation. Uses same algorithm as MFC version.
+
+MFC Reference: WinGUI/NewGUI/PasswordDlg.cpp:567"
+
+git commit -m "Replace CString with QString in PwEntry
+
+Converts all string fields to use Qt QString instead of MFC
+CString. Maintains UTF-8 encoding for file I/O compatibility.
+
+MFC Reference: KeePassLibCpp/PwStructs.h:89-112"
+
+# ❌ Bad commit messages
+git commit -m "fix bug"
+git commit -m "updates"
+git commit -m "wip"
+```
+
+### Tagging Milestones
+
+**Tag important milestones:**
+```bash
+# Phase completions
+git tag -a phase-1-complete -m "Phase 1: Core library complete, KDB compatibility verified"
+git push origin phase-1-complete
+
+# Version releases
+git tag -a v1.0.0 -m "Version 1.0.0: Full feature parity with MFC version"
+git push origin v1.0.0
+```
+
+### Code Review Checklist
+
+**Before committing:**
+- [ ] Code compiles without warnings
+- [ ] All tests pass
+- [ ] No debug code or TODO comments (or documented with issue)
+- [ ] Memory leaks checked (Valgrind/sanitizers)
+- [ ] Security review for crypto/sensitive code
+- [ ] References to original MFC files included
+- [ ] Commit message is descriptive
+
+---
+
 ## Migration Checklist
 
 ### Type System
@@ -522,5 +980,17 @@ bool loadEntry(const QString& filePath)
 
 ---
 
-*Last Updated: 2025-12-16*
-*Project: KeePass Password Safe v1.43 → Qt Port*
+## Conclusion
+
+This guide provides comprehensive patterns for migrating MFC applications to Qt. Follow these guidelines to ensure:
+- Type safety and cross-platform compatibility
+- Consistent coding style
+- Secure handling of sensitive data
+- Maintainable, well-documented code
+
+For project-specific decisions and requirements, maintain a separate `CLAUDE.md` file in your project root that references this guide.
+
+---
+
+*Last Updated: 2026-01-06*
+*Applicable to: Any MFC-to-Qt migration project*

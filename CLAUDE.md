@@ -1,4 +1,10 @@
-# Qt-KeePass Migration - Decisions and Context
+# Qt-KeePass Migration - Project Context
+
+> **For general MFC-to-Qt migration patterns**, see [MFC_TO_QT_MIGRATION_GUIDE.md](./MFC_TO_QT_MIGRATION_GUIDE.md)
+
+This document contains **project-specific** decisions, requirements, and context for the KeePass Password Safe v1.43 migration to Qt.
+
+---
 
 ## Project Overview
 
@@ -7,11 +13,13 @@
 **Original Source:** `/MFC/MFC-KeePass/` - KeePass v1.43 (GPL v2+)
 **Target:** `/Qt/Qt-KeePass/` - Qt-based cross-platform port
 
+**Key Principle:** 100% compatibility with KDB v1.x file format - databases must be interoperable between MFC and Qt versions.
+
 ---
 
-## Key Requirements & Decisions
+## Key Project Requirements
 
-### 1. Database Format Compatibility
+### 1. Database Format Compatibility (CRITICAL)
 
 **Decision:** Maintain 100% KDB v1.x file format compatibility
 
@@ -102,29 +110,33 @@
 
 **7 Phases (26 weeks total):**
 
-1. **Phase 1 (6 weeks):** Core Library Foundation
+1. **Phase 1 (6 weeks):** Core Library Foundation ✅ COMPLETE
    - Port data structures, crypto, PwManager
    - Achieve KDB format compatibility
    - **Critical milestone:** Can open/save KDB files
 
-2. **Phase 2 (2 weeks):** Platform Abstraction
+2. **Phase 2 (2 weeks):** Platform Abstraction ✅ COMPLETE
    - Cross-platform interface layer
    - Settings migration (Registry → QSettings)
 
-3. **Phase 3 (4 weeks):** Basic GUI
+3. **Phase 3 (4 weeks):** Basic GUI ✅ COMPLETE
    - Main window, entry/group widgets, essential dialogs
    - **Critical milestone:** Functional CRUD operations
 
-4. **Phase 4 (4 weeks):** Advanced GUI
+4. **Phase 4 (4 weeks):** Advanced GUI ✅ COMPLETE
    - All 25 dialogs, custom widgets
 
-5. **Phase 5 (3 weeks):** Auto-Type
+5. **Phase 5 (3 weeks):** Essential Features ✅ COMPLETE
+   - Lock/Unlock, Change Master Key, CSV Import/Export
+   - System Tray, Binary Attachments, Entry Duplication, Visit URL
+
+6. **Phase 6 (3 weeks):** Auto-Type (NEXT)
    - Platform-specific keyboard simulation
 
-6. **Phase 6 (3 weeks):** Import/Export & Plugins
+7. **Phase 7 (3 weeks):** Import/Export & Plugins
    - All format handlers, Qt plugin system
 
-7. **Phase 7 (4 weeks):** Polish & Release
+8. **Phase 8 (4 weeks):** Polish & Release
    - Testing, localization, installers
 
 **Why Core-First:**
@@ -135,7 +147,7 @@
 
 ---
 
-## Architectural Decisions
+## KeePass-Specific Architecture
 
 ### Code Organization
 
@@ -160,72 +172,21 @@
    - Abstracted behind interfaces
    - Separate files per platform (Windows, Mac, Linux)
 
-### String Handling
-
-**Decision:** QString internally, TCHAR/UTF-8 for serialization
-
-**MFC Version:**
-- Uses `TCHAR*` (Windows Unicode: `wchar_t*`)
-- Null-terminated strings
-- UTF-8 encoding in KDB files
-
-**Qt Version:**
-- Internal: `QString` (UTF-16)
-- Serialization: Convert to UTF-8 for KDB format
-- Benefits: Qt's Unicode support, internationalization
-
-**Example:**
-```cpp
-// MFC: TCHAR* pszTitle;
-// Qt:  QString title;
-
-// When writing to KDB:
-QByteArray titleUtf8 = title.toUtf8();
-```
-
-### Memory Management
-
-**Decision:** Qt ownership model + RAII for sensitive data
-
-**Smart Pointers:**
-- Qt parent-child ownership for QObjects
-- `std::unique_ptr` for non-Qt objects
-- RAII for secure memory (lock on construction, clear on destruction)
-
-**Secure Memory:**
-```cpp
-class SecureMemory {
-public:
-    SecureMemory(size_t size) : m_data(new uint8_t[size]), m_size(size) {
-        memlock(m_data, m_size);
-    }
-    ~SecureMemory() {
-        OPENSSL_cleanse(m_data, m_size);
-        memunlock(m_data, m_size);
-        delete[] m_data;
-    }
-    // Disable copy, enable move
-private:
-    uint8_t* m_data;
-    size_t m_size;
-};
-```
-
 ### Qt Model/View Pattern
 
 **Decision:** Use QAbstractItemModel for entries and groups
+
+**Implementation:**
+```cpp
+EntryModel : public QAbstractTableModel  // For entry list view
+GroupModel : public QAbstractItemModel   // For group tree view
+```
 
 **Benefits:**
 - Separation of data and presentation
 - Built-in sorting, filtering
 - Efficient updates (only changed items repaint)
 - Standard Qt pattern
-
-**Implementation:**
-```cpp
-EntryModel : public QAbstractTableModel
-GroupModel : public QAbstractItemModel (tree structure)
-```
 
 ### Configuration Storage
 
@@ -242,11 +203,10 @@ GroupModel : public QAbstractItemModel (tree structure)
 
 ---
 
-## Critical Compatibility Requirements
+## Critical KDB v1.x File Format Specifications
 
-### KDB File Format (MUST NOT CHANGE)
+### Header Structure (124 bytes - MUST NOT CHANGE)
 
-**Header Structure (124 bytes):**
 ```
 Offset  Size  Field
 0       4     dwSignature1 (0x9AA2D903)
@@ -262,23 +222,20 @@ Offset  Size  Field
 120     4     dwKeyEncRounds (default: 600,000)
 ```
 
-**Key Derivation (MUST BE EXACT):**
+### Key Derivation (MUST BE EXACT)
+
 1. Hash password with SHA-256 → 32 bytes
 2. If key file: XOR password hash with key file hash
 3. Transform key: AES-ECB encrypt key with itself `dwKeyEncRounds` times using `aMasterSeed2`
 4. Hash transformed key with SHA-256
 5. Hash result with `aMasterSeed` using SHA-256 → final master key (32 bytes)
 
-**Encryption:**
+### Encryption
+
 - Algorithm: AES-256-CBC or Twofish
 - IV: From header `aEncryptionIV` (16 bytes)
 - Padding: PKCS#7
 - Content: Serialized groups and entries
-
-**Critical Files to Reference:**
-- `MFC/MFC-KeePass/KeePassLibCpp/PwStructs.h` - Exact data structure layout
-- `MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp` - Serialization logic
-- `MFC/MFC-KeePass/KeePassLibCpp/Crypto/KeyTransform.cpp` - Key derivation
 
 ### Data Structures (MUST PRESERVE LAYOUT)
 
@@ -333,6 +290,11 @@ void UnlockEntryPassword(PW_ENTRY* entry) {
 
 **Purpose:** Protect passwords in memory from memory dumps/debuggers
 
+**Critical Files to Reference:**
+- `MFC/MFC-KeePass/KeePassLibCpp/PwStructs.h` - Exact data structure layout
+- `MFC/MFC-KeePass/KeePassLibCpp/Details/PwFileImpl.cpp` - Serialization logic
+- `MFC/MFC-KeePass/KeePassLibCpp/Crypto/KeyTransform.cpp` - Key derivation
+
 ---
 
 ## Testing Strategy
@@ -379,87 +341,33 @@ void UnlockEntryPassword(PW_ENTRY* entry) {
 
 ---
 
-## Development Guidelines
+## Project-Specific Guidelines
 
-### Coding Standards
+### Type Usage Exceptions
 
-- **Style:** Qt coding conventions
-- **Standard:** C++17 minimum
-- **Naming:**
-  - Classes: `PascalCase`
-  - Functions: `camelCase`
-  - Members: `m_camelCase`
-  - Constants: `UPPER_SNAKE_CASE`
-  - QString variables: `s` prefix (e.g., `sTitle`, `sPassword`)
-  - NOT: Windows-style `psz` prefix (pointer to string, zero-terminated)
+While the [MFC_TO_QT_MIGRATION_GUIDE.md](./MFC_TO_QT_MIGRATION_GUIDE.md) recommends Qt types everywhere, this project has specific exceptions:
 
-#### Type Usage
-
-**Use Qt types instead of Windows types:**
-- Use `quint8`, `quint16`, `quint32`, `quint64` instead of `BYTE`, `WORD`, `DWORD`, `QWORD`
-- Use `qint32`, `qint64` instead of `LONG`, `LONGLONG`
-- Use `bool` instead of `BOOL`
-
-**Exceptions (Windows types acceptable):**
-1. **File format compatibility** - KDB v1.x structures that must match binary layout:
+**Windows types are acceptable in:**
+1. **KDB file format code** - Must match exact binary layout:
    - `PW_DBHEADER` field types
-   - `PW_GROUP` and `PW_ENTRY` serialization field sizes
+   - `PW_GROUP` and `PW_ENTRY` serialization
    - Field type identifiers in file I/O code
-2. **Third-party library interfaces** - When interfacing with external code:
-   - Rijndael/AES encryption API
-   - Twofish encryption API
-   - SHA-256 if using Windows CNG API (we use our own implementation)
-3. **Temporary transition** - During migration, structures being ported may temporarily retain Windows types until fully refactored
 
-**Internal code must use Qt types:**
-- Member variables (counters, sizes, indices)
-- Function parameters (unless interfacing with structures above)
-- Loop variables
-- Local variables
+2. **Crypto library interfaces** - When interfacing with existing code:
+   - Rijndael/AES encryption API (uses `UINT8`)
+   - Twofish encryption API (uses `BYTE`)
 
-#### String Handling
+3. **Temporary during migration** - Mark with TODO comments
 
-**QString usage:**
-1. **Always use QString for:**
-   - User-visible strings (UI, messages, titles)
-   - Internal string manipulation
-   - File paths (use QString, not std::string or char*)
-   - Configuration values
+**All other code MUST use Qt types** (quint8, quint16, quint32, quint64, bool)
 
-2. **char* usage (exceptions only):**
-   - KDB file format serialization (UTF-8 encoded, null-terminated)
-   - Only at the boundary when reading/writing binary file format
-   - Convert to QString immediately after reading
-   - Convert from QString just before writing
+### String Handling
 
-3. **String conversion:**
-   - File format → `QString::fromUtf8(char*, length)`
-   - QString → File format: `QString::toUtf8()` returns `QByteArray`
-
-**Naming convention:**
-- QString variables: `sVariableName` (e.g., `sTitle`, `sUsername`)
+**Project-specific convention:**
+- QString variables: `s` prefix (e.g., `sTitle`, `sPassword`)
 - char* only in file I/O: `pszFieldName` (legacy, at serialization boundary only)
-- QByteArray: `vVariableName` or descriptive name
 
-### Comments
-
-- Document deviations from MFC version
-- Explain crypto/security-critical code
-- Reference original file locations for ported code
-
-### Security Practices
-
-1. **No custom crypto** - Use OpenSSL for primitives
-2. **Secure defaults** - Memory locking enabled, strong key rounds
-3. **Input validation** - Check all file inputs
-4. **Memory safety** - No buffer overflows, bounds checking
-5. **Compiler warnings** - Treat warnings as errors
-
-### Git Workflow
-
-- Branch per feature/phase
-- Commit messages reference MFC source files
-- Tag milestones (Phase 1 complete, etc.)
+See [MFC_TO_QT_MIGRATION_GUIDE.md](./MFC_TO_QT_MIGRATION_GUIDE.md#string-handling) for detailed patterns.
 
 ---
 
@@ -503,32 +411,36 @@ void UnlockEntryPassword(PW_ENTRY* entry) {
 
 ---
 
-## Project Timeline
+## Project Timeline & Status
 
 **Start Date:** 2025-12-16
 **Target Completion:** 26 weeks (June 2026)
+**Current Status:** Phase 5 Complete (2026-01-06)
 
-**Current Phase:** Phase 1 - Core Library Foundation (Weeks 1-6)
-**Current Week:** Week 1
-**Current Status:** Project structure complete, starting core library port
+**Completed Phases:**
+- ✅ Phase 1: Core Library Foundation (100% KDB compatibility achieved)
+- ✅ Phase 2-Lite: Platform Foundation (PwSettings, MemoryProtection)
+- ✅ Phase 3: Basic GUI (Full CRUD operations)
+- ✅ Phase 4: Advanced GUI (Search, Password Generator, Database Settings, Options)
+- ✅ Phase 5: Essential Features (Lock/Unlock, Change Key, CSV, Tray, Attachments, Duplicate, Visit URL)
 
-**Next Milestones:**
-- Week 2: Data structures and crypto ported
-- Week 4: KDB I/O working, first compatibility tests
-- Week 6: Phase 1 complete - core library stable
+**Current Phase:** Ready for Phase 6 (Auto-Type)
+
+**Test Results:**
+- ✅ 13/13 automated unit tests passing
+- ✅ Windows validation: 7/8 full pass, 1/8 functional pass
+- ✅ MFC → Qt round-trip compatibility verified
 
 ---
 
 ## Resources & References
 
-### Documentation
+### KeePass-Specific Documentation
 
 - Original KeePass: https://keepass.info/
 - KDB Format: https://keepass.info/help/kb/kdb.html
-- Qt Documentation: https://doc.qt.io/
-- OpenSSL: https://www.openssl.org/docs/
 
-### Source Files (MFC Reference)
+### MFC Source Files
 
 **Core Library:**
 - `MFC/MFC-KeePass/KeePassLibCpp/PwStructs.h` (255 lines)
@@ -547,7 +459,6 @@ void UnlockEntryPassword(PW_ENTRY* entry) {
 
 - Qt: LGPL v3 / GPL v2/v3 / Commercial
 - OpenSSL: Apache 2.0 (OpenSSL 3.x) / dual license (OpenSSL 1.x)
-- Argon2: CC0 / Apache 2.0
 
 ---
 
@@ -562,6 +473,7 @@ void UnlockEntryPassword(PW_ENTRY* entry) {
 | 2025-12-16 | CMake build system | Cross-platform, modern, Qt-compatible |
 | 2025-12-16 | Qt 5.15/6.2+ LTS versions | Long-term support, stable APIs |
 | 2025-12-16 | Phased migration (core-first) | Validate critical compatibility before GUI investment |
+| 2026-01-06 | Reorganize documentation | Separate general MFC→Qt patterns from project-specific context |
 
 ---
 
@@ -574,3 +486,4 @@ void UnlockEntryPassword(PW_ENTRY* entry) {
 ---
 
 *This document should be updated as new decisions are made during the migration process.*
+*For general MFC-to-Qt migration patterns, see [MFC_TO_QT_MIGRATION_GUIDE.md](./MFC_TO_QT_MIGRATION_GUIDE.md)*

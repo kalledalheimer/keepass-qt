@@ -1,6 +1,6 @@
 # Active Tasks
 
-Last updated: 2026-01-03
+Last updated: 2026-01-06
 
 ## ✅ Phase 1 Complete - MFC Compatibility Achieved!
 
@@ -59,7 +59,7 @@ Last updated: 2026-01-03
 
 ---
 
-## 🔴 High Priority - Phase 4: Advanced GUI
+## ✅ Phase 4: Advanced GUI - COMPLETE! 🎉
 
 - [x] Implement Search/Find functionality (#7) - **COMPLETE** ✅
   - Find dialog with all search options
@@ -116,7 +116,7 @@ Last updated: 2026-01-03
 
 ---
 
-## 🔴 High Priority - Phase 5: Essential Features
+## ✅ Phase 5: Essential Features - COMPLETE! 🎉
 
 - [x] Implement Lock/Unlock Workspace (#15) - **COMPLETE** ✅
   - Lock workspace command (Ctrl+L)
@@ -162,15 +162,15 @@ Last updated: 2026-01-03
   - Generate new timestamps
   - Place duplicate in same group
 
-- [ ] Implement Visit URL Feature (#21)
+- [x] Implement Visit URL Feature (#21) - **COMPLETE** ✅
   - Open URL in default browser
   - URL validation
   - Context menu and toolbar button
   - Handle cmd:// URLs specially
 
-**Goal:** Make application production-ready with essential features
+**Goal:** Make application production-ready with essential features ✅
 
-**Target:** Phase 5 completion
+**Target:** Phase 5 completion - **ACHIEVED!** 🎉
 
 ---
 
@@ -293,6 +293,47 @@ Last updated: 2026-01-03
   - Explain crypto/security-critical code
 
 ## ✅ Recently Completed
+
+### Session 14: Phase 5 - Visit URL Feature Implementation (2026-01-06)
+**Seventh Phase 5 Feature Complete - Phase 5 Now Complete!** 🎉 URL opening with browser and cmd:// support
+- [x] **Implemented Visit URL Feature (#21)**
+  - Visit URL action (Edit menu, Ctrl+U shortcut)
+  - Open URLs in default browser with QDesktopServices
+  - Special cmd:// URL handling with QProcess
+  - Automatic http:// prefix for protocol-less URLs
+  - UNC path support (\\server\share)
+  - Empty URL validation
+  - Entry selection validation
+- [x] **URL Processing Logic**
+  - openUrl() helper method (~45 lines)
+  - cmd:// detection (case-insensitive)
+  - Command extraction (strip "cmd://" prefix)
+  - QProcess::startDetached() for command execution
+  - QDesktopServices::openUrl() for regular URLs
+  - Protocol detection (contains "://")
+- [x] **MainWindow Integration**
+  - m_actionEditVisitUrl action with Ctrl+U
+  - onEditVisitUrl() handler (~30 lines)
+  - Menu placement: Edit menu after Copy Password
+  - Action enabled when entry selected and database unlocked
+  - Status bar feedback on URL opening
+- [x] **Error Handling**
+  - Empty URL information dialog
+  - Command execution failure error
+  - URL opening failure error
+  - Empty cmd:// command warning
+- [x] **Testing**
+  - Clean build with no warnings ✅
+  - All 2/2 unit tests passing ✅
+  - Fixed missing includes (QDesktopServices, QProcess, QUrl)
+- [x] **100% MFC Feature Parity**
+  - Matches MFC OnPwlistVisitUrl implementation
+  - Matches MFC OpenUrlEx URL processing
+  - Matches MFC WU_IsCommandLineURL cmd:// detection
+  - Same keyboard shortcut (Ctrl+U)
+  - Same menu placement and behavior
+
+**Phase 5 Achievement:** All 7 essential features complete! Lock/Unlock (#15), Change Master Key (#16), CSV Import/Export (#17), System Tray (#18), Binary Attachments (#19), Entry Duplication (#20), Visit URL (#21). Application is now production-ready! ✅
 
 ### Session 13: Phase 4 - Tools > Options Dialog Implementation (2026-01-03)
 **Fifth Phase 4 Feature Complete:** Comprehensive application settings dialog with full MFC parity
