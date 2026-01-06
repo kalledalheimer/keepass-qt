@@ -149,7 +149,7 @@ Last updated: 2026-01-03
   - Single/double-click tray actions
   - Show tray only when minimized option
 
-- [ ] Implement Binary Attachment Support (#19)
+- [x] Implement Binary Attachment Support (#19) - **COMPLETE** ✅
   - Save attachment to file
   - Open attachment with default application
   - View attachment info in entry dialog
