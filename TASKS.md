@@ -176,12 +176,14 @@ Last updated: 2026-01-06
 
 ## 🔴 High Priority - Phase 6: Auto-Type
 
-- [ ] Implement Basic Auto-Type (#22)
-  - Keyboard simulation (platform-specific)
+- [x] Implement Basic Auto-Type (#22) - **COMPLETE** ✅
+  - Keyboard simulation (macOS with CGEvent API)
   - Default auto-type sequence: {USERNAME}{TAB}{PASSWORD}{ENTER}
-  - Auto-type for selected entry
-  - Global auto-type hotkey (Ctrl+Alt+A)
-  - Target window detection
+  - Auto-type for selected entry (Edit menu, Ctrl+Shift+V)
+  - Placeholder parsing: {USERNAME}, {PASSWORD}, {TITLE}, {URL}, {NOTES}
+  - Special keys: {TAB}, {ENTER}, {SPACE}, {BACKSPACE}, {DELETE}, arrows, F-keys
+  - Platform abstraction layer for future Windows/Linux support
+  - Note: Requires accessibility permissions (code signing needed for unsigned apps)
 
 - [ ] Implement Auto-Type Configuration (#23)
   - Custom auto-type sequences per entry
