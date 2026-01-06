@@ -59,6 +59,7 @@ private slots:
     void onEditAddGroup();
     void onEditAddEntry();
     void onEditEditEntry();
+    void onEditDuplicateEntry();
     void onEditDeleteEntry();
     void onEditDeleteGroup();
     void onEditFind();
@@ -168,6 +169,7 @@ private:
     QAction *m_actionEditAddGroup;
     QAction *m_actionEditAddEntry;
     QAction *m_actionEditEditEntry;
+    QAction *m_actionEditDuplicateEntry;
     QAction *m_actionEditDeleteEntry;
     QAction *m_actionEditDeleteGroup;
     QAction *m_actionEditFind;

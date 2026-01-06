@@ -182,6 +182,12 @@ void MainWindow::createActions()
     m_actionEditEditEntry->setEnabled(false);
     connect(m_actionEditEditEntry, &QAction::triggered, this, &MainWindow::onEditEditEntry);
 
+    m_actionEditDuplicateEntry = new QAction(tr("D&uplicate Entry"), this);
+    m_actionEditDuplicateEntry->setShortcut(Qt::CTRL | Qt::Key_K);
+    m_actionEditDuplicateEntry->setStatusTip(tr("Duplicate the selected entry"));
+    m_actionEditDuplicateEntry->setEnabled(false);
+    connect(m_actionEditDuplicateEntry, &QAction::triggered, this, &MainWindow::onEditDuplicateEntry);
+
     m_actionEditDeleteEntry = new QAction(iconMgr.getToolbarIcon("tb_delet"), tr("&Delete Entry"), this);
     m_actionEditDeleteEntry->setShortcut(Qt::Key_Delete);
     m_actionEditDeleteEntry->setStatusTip(tr("Delete the selected entry"));
@@ -283,6 +289,7 @@ void MainWindow::createMenus()
     editMenu->addAction(m_actionEditAddEntry);
     editMenu->addSeparator();
     editMenu->addAction(m_actionEditEditEntry);
+    editMenu->addAction(m_actionEditDuplicateEntry);
     editMenu->addSeparator();
     editMenu->addAction(m_actionEditDeleteEntry);
     editMenu->addAction(m_actionEditDeleteGroup);
@@ -442,6 +449,7 @@ void MainWindow::updateActions()
     m_actionEditAddGroup->setEnabled(unlocked);
     m_actionEditAddEntry->setEnabled(unlocked);
     m_actionEditEditEntry->setEnabled(unlocked && hasSelection);
+    m_actionEditDuplicateEntry->setEnabled(unlocked && hasSelection);
     m_actionEditDeleteEntry->setEnabled(unlocked && hasSelection);
     m_actionEditDeleteGroup->setEnabled(unlocked);
     m_actionEditFind->setEnabled(unlocked);
@@ -1253,6 +1261,124 @@ void MainWindow::onEditEditEntry()
     updateWindowTitle();
     updateActions();
     m_statusLabel->setText(tr("Entry '%1' updated successfully").arg(title));
+}
+
+void MainWindow::onEditDuplicateEntry()
+{
+    // Get currently selected entry
+    QModelIndex currentIndex = m_entryView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Duplicate Entry"),
+                               tr("Please select an entry to duplicate."));
+        return;
+    }
+
+    // Get the entry from the model
+    PW_ENTRY *originalEntry = m_entryModel->getEntry(currentIndex);
+    if (!originalEntry) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to get entry data."));
+        return;
+    }
+
+    // Unlock the password before copying
+    m_pwManager->unlockEntryPassword(originalEntry);
+
+    // Create duplicate entry template (copy all fields)
+    PW_ENTRY entryTemplate;
+    std::memset(&entryTemplate, 0, sizeof(PW_ENTRY));
+
+    // Set new timestamps
+    QDateTime now = QDateTime::currentDateTime();
+    PwUtil::dateTimeToPwTime(now, &entryTemplate.tCreation);
+    PwUtil::dateTimeToPwTime(now, &entryTemplate.tLastMod);
+    PwUtil::dateTimeToPwTime(now, &entryTemplate.tLastAccess);
+    entryTemplate.tExpire = originalEntry->tExpire;  // Keep original expiration
+
+    // Copy title and append " - Copy"
+    QString originalTitle = QString::fromUtf8(originalEntry->pszTitle);
+    QString newTitle = originalTitle + tr(" - Copy");
+    QByteArray titleUtf8 = newTitle.toUtf8();
+    entryTemplate.pszTitle = new char[titleUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszTitle, titleUtf8.constData());
+
+    // Copy username
+    QByteArray usernameUtf8 = QString::fromUtf8(originalEntry->pszUserName).toUtf8();
+    entryTemplate.pszUserName = new char[usernameUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszUserName, usernameUtf8.constData());
+
+    // Copy password
+    QByteArray passwordUtf8 = QString::fromUtf8(originalEntry->pszPassword).toUtf8();
+    entryTemplate.pszPassword = new char[passwordUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszPassword, passwordUtf8.constData());
+    entryTemplate.uPasswordLen = passwordUtf8.size();
+
+    // Copy URL
+    QByteArray urlUtf8 = QString::fromUtf8(originalEntry->pszURL).toUtf8();
+    entryTemplate.pszURL = new char[urlUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszURL, urlUtf8.constData());
+
+    // Copy notes
+    QByteArray notesUtf8 = QString::fromUtf8(originalEntry->pszAdditional).toUtf8();
+    entryTemplate.pszAdditional = new char[notesUtf8.size() + 1];
+    std::strcpy(entryTemplate.pszAdditional, notesUtf8.constData());
+
+    // Copy binary data if present
+    if (originalEntry->pszBinaryDesc && originalEntry->pBinaryData &&
+        originalEntry->uBinaryDataLen > 0) {
+        size_t descLen = std::strlen(originalEntry->pszBinaryDesc);
+        entryTemplate.pszBinaryDesc = new char[descLen + 1];
+        std::strcpy(entryTemplate.pszBinaryDesc, originalEntry->pszBinaryDesc);
+
+        entryTemplate.uBinaryDataLen = originalEntry->uBinaryDataLen;
+        entryTemplate.pBinaryData = new quint8[originalEntry->uBinaryDataLen];
+        std::memcpy(entryTemplate.pBinaryData, originalEntry->pBinaryData,
+                   originalEntry->uBinaryDataLen);
+    } else {
+        entryTemplate.pszBinaryDesc = new char[1];
+        entryTemplate.pszBinaryDesc[0] = '\0';
+        entryTemplate.pBinaryData = nullptr;
+        entryTemplate.uBinaryDataLen = 0;
+    }
+
+    // Set other properties (copy from original)
+    entryTemplate.uGroupId = originalEntry->uGroupId;  // Same group
+    entryTemplate.uImageId = originalEntry->uImageId;  // Same icon
+
+    // UUID will be auto-generated by addEntry() (memset to 0 above)
+
+    // Lock original password again
+    m_pwManager->lockEntryPassword(originalEntry);
+
+    // Add the duplicate entry to database
+    bool success = m_pwManager->addEntry(&entryTemplate);
+
+    // Clean up allocated memory
+    delete[] entryTemplate.pszTitle;
+    delete[] entryTemplate.pszUserName;
+    delete[] entryTemplate.pszPassword;
+    delete[] entryTemplate.pszURL;
+    delete[] entryTemplate.pszAdditional;
+    delete[] entryTemplate.pszBinaryDesc;
+    if (entryTemplate.pBinaryData) {
+        delete[] entryTemplate.pBinaryData;
+    }
+
+    if (!success) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to duplicate entry."));
+        m_statusLabel->setText(tr("Failed to duplicate entry"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    m_statusLabel->setText(tr("Entry '%1' duplicated successfully").arg(newTitle));
+
+    // TODO: Select the newly added entry in the list view
 }
 
 void MainWindow::onEditDeleteEntry()
