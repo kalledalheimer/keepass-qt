@@ -156,7 +156,7 @@ Last updated: 2026-01-03
   - Add/replace attachment in entry dialog
   - Delete attachment
 
-- [ ] Implement Entry Duplication (#20)
+- [x] Implement Entry Duplication (#20) - **COMPLETE** ✅
   - Duplicate entry command
   - Copy all fields except UUID
   - Generate new timestamps
