@@ -41,6 +41,9 @@
 #include <QClipboard>
 #include <QCryptographicHash>
 #include <QEvent>
+#include <QDesktopServices>
+#include <QProcess>
+#include <QUrl>
 
 #include "../core/PwStructs.h"
 #include <cstring>
@@ -217,6 +220,12 @@ void MainWindow::createActions()
     m_actionEditCopyPassword->setEnabled(false);
     connect(m_actionEditCopyPassword, &QAction::triggered, this, &MainWindow::onEditCopyPassword);
 
+    m_actionEditVisitUrl = new QAction(tr("&Visit URL"), this);
+    m_actionEditVisitUrl->setShortcut(Qt::CTRL | Qt::Key_U);
+    m_actionEditVisitUrl->setStatusTip(tr("Open URL in default browser"));
+    m_actionEditVisitUrl->setEnabled(false);
+    connect(m_actionEditVisitUrl, &QAction::triggered, this, &MainWindow::onEditVisitUrl);
+
     // View menu actions
     m_actionViewToolbar = new QAction(tr("&Toolbar"), this);
     m_actionViewToolbar->setCheckable(true);
@@ -296,6 +305,7 @@ void MainWindow::createMenus()
     editMenu->addSeparator();
     editMenu->addAction(m_actionEditCopyUsername);
     editMenu->addAction(m_actionEditCopyPassword);
+    editMenu->addAction(m_actionEditVisitUrl);
     editMenu->addSeparator();
     editMenu->addAction(m_actionEditFind);
 
@@ -455,6 +465,7 @@ void MainWindow::updateActions()
     m_actionEditFind->setEnabled(unlocked);
     m_actionEditCopyUsername->setEnabled(unlocked && hasSelection);
     m_actionEditCopyPassword->setEnabled(unlocked && hasSelection);
+    m_actionEditVisitUrl->setEnabled(unlocked && hasSelection);
 
     // View menu - some view options work when locked
     m_actionViewExpandAll->setEnabled(m_hasDatabase);
@@ -2108,6 +2119,83 @@ void MainWindow::clearClipboardIfOwner()
 
     // Clear our hash
     m_clipboardHash.clear();
+}
+
+void MainWindow::onEditVisitUrl()
+{
+    // Get currently selected entry
+    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+        return;
+    }
+
+    QModelIndex index = m_entryView->selectionModel()->currentIndex();
+    if (!index.isValid()) {
+        return;
+    }
+
+    PW_ENTRY* entry = m_entryModel->getEntry(index);
+    if (!entry) {
+        return;
+    }
+
+    // Get URL from entry
+    QString url = QString::fromUtf8(entry->pszURL).trimmed();
+    if (url.isEmpty()) {
+        QMessageBox::information(this, tr("Visit URL"),
+                               tr("This entry does not have a URL."));
+        return;
+    }
+
+    // Open the URL
+    openUrl(url);
+
+    m_statusLabel->setText(tr("Opening URL: %1").arg(url));
+}
+
+void MainWindow::openUrl(const QString& url)
+{
+    // Reference: MFC OpenUrlEx and ParseAndOpenURLWithEntryInfo
+
+    if (url.isEmpty()) {
+        return;
+    }
+
+    QString processedUrl = url.trimmed();
+
+    // Check if it's a cmd:// URL (execute command)
+    if (processedUrl.toLower().startsWith("cmd://")) {
+        QString command = processedUrl.mid(6);  // Remove "cmd://" prefix
+
+        if (command.isEmpty()) {
+            QMessageBox::warning(this, tr("Visit URL"),
+                               tr("Empty command in cmd:// URL."));
+            return;
+        }
+
+        // Execute command
+        bool success = QProcess::startDetached(command);
+
+        if (!success) {
+            QMessageBox::critical(this, tr("Error"),
+                                tr("Failed to execute command: %1").arg(command));
+        }
+
+        return;
+    }
+
+    // For regular URLs, add http:// prefix if no protocol is specified
+    if (!processedUrl.contains("://") &&
+        !processedUrl.startsWith("\\\\")) {  // Not a UNC path
+        processedUrl = "http://" + processedUrl;
+    }
+
+    // Open URL with default browser/application
+    bool success = QDesktopServices::openUrl(QUrl(processedUrl));
+
+    if (!success) {
+        QMessageBox::critical(this, tr("Error"),
+                            tr("Failed to open URL: %1").arg(processedUrl));
+    }
 }
 
 void MainWindow::startClipboardTimer()

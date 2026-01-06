@@ -65,6 +65,7 @@ private slots:
     void onEditFind();
     void onEditCopyUsername();
     void onEditCopyPassword();
+    void onEditVisitUrl();
 
     // View menu
     void onViewToolbar();
@@ -141,6 +142,9 @@ private:
     void showTrayIcon();
     void hideTrayIcon();
 
+    // URL helpers
+    void openUrl(const QString& url);
+
     // Members
     PwManager *m_pwManager;
     GroupModel *m_groupModel;
@@ -175,6 +179,7 @@ private:
     QAction *m_actionEditFind;
     QAction *m_actionEditCopyUsername;
     QAction *m_actionEditCopyPassword;
+    QAction *m_actionEditVisitUrl;
 
     // Actions - View
     QAction *m_actionViewToolbar;
