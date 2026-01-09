@@ -68,8 +68,19 @@ public:
     QString getBackupDirectory() const;
     void setBackupDirectory(const QString& path);
 
+    // TAN Wizard settings
+    QString getTanChars() const;
+    void setTanChars(const QString& chars);
+
+    // Auto-Type settings
+    [[nodiscard]] QString getDefaultAutoTypeSequence() const;
+    void setDefaultAutoTypeSequence(const QString& sequence);
+
+    [[nodiscard]] bool getAutoTypeEnabled() const;
+    void setAutoTypeEnabled(bool enabled);
+
     // Generic access (for future settings)
-    QVariant get(const QString& key, const QVariant& defaultValue = QVariant()) const;
+    [[nodiscard]] QVariant get(const QString& key, const QVariant& defaultValue = QVariant()) const;
     void set(const QString& key, const QVariant& value);
 
     // Persistence
@@ -94,6 +105,9 @@ private:
     static constexpr const char* KEY_MAIN_WINDOW_STATE = "UI/MainWindowState";
     static constexpr const char* KEY_CREATE_BACKUPS = "Backup/CreateBackups";
     static constexpr const char* KEY_BACKUP_DIRECTORY = "Backup/Directory";
+    static constexpr const char* KEY_TAN_CHARS = "TAN/AcceptableChars";
+    static constexpr const char* KEY_AUTO_TYPE_DEFAULT_SEQUENCE = "AutoType/DefaultSequence";
+    static constexpr const char* KEY_AUTO_TYPE_ENABLED = "AutoType/Enabled";
 };
 
 #endif // PWSETTINGS_H

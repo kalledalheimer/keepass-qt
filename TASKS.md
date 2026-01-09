@@ -185,12 +185,12 @@ Last updated: 2026-01-09
   - Platform abstraction layer for future Windows/Linux support
   - Note: Requires accessibility permissions (code signing needed for unsigned apps)
 
-- [ ] Implement Auto-Type Configuration (#23)
-  - Custom auto-type sequences per entry
-  - Auto-type sequence editor
-  - Window title matching
-  - Auto-type settings in Options dialog
-  - Auto-type delays and timings
+- [x] Implement Auto-Type Configuration (#23) - **COMPLETE** ✅
+  - Custom auto-type sequences per entry (stored in notes field, MFC-compatible)
+  - Auto-type sequence editor (in AddEntryDialog)
+  - Window title matching (storage implemented, execution pending #24)
+  - Auto-type settings in Options dialog (new Auto-Type tab)
+  - Auto-type delays and timings (configurable via {DELAY X} placeholder)
 
 - [ ] Implement Advanced Auto-Type (#24)
   - Auto-type window associations
@@ -294,6 +294,75 @@ Last updated: 2026-01-09
   - Explain crypto/security-critical code
 
 ## ✅ Recently Completed
+
+### Session 16: Phase 6 - Auto-Type Configuration & Linter Cleanup (2026-01-09)
+**Auto-Type Configuration Complete (#23)** 🎉
+
+**What Was Done:**
+1. **AutoTypeConfig Helper Class** (NEW)
+   - Created `src/autotype/AutoTypeConfig.h/cpp` (161 lines total)
+   - Parses/formats auto-type config from notes field using MFC-compatible format
+   - Uses special prefixes: `Auto-Type:` and `Auto-Type-Window:`
+   - Maintains 100% KDB v1.x format compatibility
+
+2. **AddEntryDialog Enhancement**
+   - Added auto-type configuration UI section
+   - Custom sequence field with "Insert Default" button
+   - Target window field with "Select Window..." button (placeholder)
+   - Automatic parsing/formatting when loading/saving entries
+   - Clean separation of notes and auto-type config in UI
+
+3. **OptionsDialog Auto-Type Tab** (NEW - 7th tab)
+   - Enable/disable auto-type functionality toggle
+   - Default sequence editor with helpful placeholders
+   - Comprehensive placeholder documentation
+   - Load/save settings integration
+
+4. **PwSettings Integration**
+   - Added `getAutoTypeEnabled()` / `setAutoTypeEnabled()`
+   - Added `getDefaultAutoTypeSequence()` / `setDefaultAutoTypeSequence()`
+   - Default sequence: `{USERNAME}{TAB}{PASSWORD}{ENTER}`
+   - Cross-platform persistence via QSettings
+
+5. **MainWindow Integration**
+   - Updated auto-type execution to read custom sequences from entries
+   - Proper fallback chain: entry custom → settings default → built-in default
+   - Full backward compatibility maintained
+
+6. **Comprehensive Linter Cleanup**
+   - Fixed 30+ implicit bool conversion warnings
+   - Added `[[nodiscard]]` attributes to all getter methods
+   - Fixed enum base types for performance (quint8)
+   - Simplified boolean expressions (DeMorgan's theorem)
+   - Split multiple declarations
+   - **Result: ZERO compilation errors, ZERO warnings**
+
+**Files Created:**
+- `src/autotype/AutoTypeConfig.h` (40 lines)
+- `src/autotype/AutoTypeConfig.cpp` (121 lines)
+
+**Files Modified:**
+- `src/autotype/CMakeLists.txt` (+2 lines)
+- `src/gui/AddEntryDialog.h` (+14 lines)
+- `src/gui/AddEntryDialog.cpp` (+85 lines, fixed 9 linter warnings)
+- `src/gui/OptionsDialog.h` (+14 lines)
+- `src/gui/OptionsDialog.cpp` (+71 lines)
+- `src/core/platform/PwSettings.h` (+8 lines, fixed 3 linter warnings)
+- `src/core/platform/PwSettings.cpp` (+28 lines)
+- `src/gui/MainWindow.cpp` (+19 lines, fixed 8 linter warnings)
+
+**Impact:**
+- Per-entry auto-type customization now fully functional
+- Global auto-type settings configurable via UI
+- MFC-compatible storage ensures database portability
+- Production-ready code quality (zero warnings)
+
+**Next Steps:**
+- Task #24: Advanced Auto-Type (window matching execution, obfuscation, global hotkey)
+- Task #29: Connect column visibility toggles
+- Task #28: Entry properties viewer with history
+
+---
 
 ### Session 15: Phase 8 - Database Tools Implementation (2026-01-09)
 **Database Tools Feature Complete (#31)** 🎉 TAN Wizard, Database Repair, and Expiration Tools

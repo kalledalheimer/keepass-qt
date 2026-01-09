@@ -88,6 +88,7 @@ OptionsDialog::OptionsDialog(QWidget* parent)
     createInterfaceTab();
     createFilesTab();
     createMemoryTab();
+    createAutoTypeTab();
     createSetupTab();
     createAdvancedTab();
 
@@ -319,6 +320,53 @@ void OptionsDialog::createMemoryTab()
 
     layout->addStretch();
     m_tabWidget->addTab(memoryTab, tr("Memory"));
+}
+
+void OptionsDialog::createAutoTypeTab()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/OptionsAutoTypeDlg.cpp
+    QWidget* autoTypeTab = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(autoTypeTab);
+
+    // Auto-Type settings group
+    QGroupBox* autoTypeGroup = new QGroupBox(tr("Auto-Type Settings"), autoTypeTab);
+    QVBoxLayout* autoTypeLayout = new QVBoxLayout(autoTypeGroup);
+
+    autoTypeLayout->addWidget(new QLabel(
+        tr("Auto-Type allows KeePass to automatically type your username and password\n"
+           "into login forms. Configure the global auto-type behavior below."),
+        autoTypeGroup));
+
+    // Enable/Disable Auto-Type
+    m_checkAutoTypeEnabled = new QCheckBox(
+        tr("Enable Auto-Type functionality"), autoTypeGroup);
+    m_checkAutoTypeEnabled->setChecked(true);
+    autoTypeLayout->addWidget(m_checkAutoTypeEnabled);
+
+    autoTypeLayout->addSpacing(10);
+
+    // Default sequence
+    autoTypeLayout->addWidget(new QLabel(
+        tr("Default Auto-Type Sequence:"), autoTypeGroup));
+
+    m_editDefaultAutoTypeSequence = new QLineEdit(autoTypeGroup);
+    m_editDefaultAutoTypeSequence->setPlaceholderText(
+        tr("e.g., {USERNAME}{TAB}{PASSWORD}{ENTER}"));
+    m_editDefaultAutoTypeSequence->setText(QStringLiteral("{USERNAME}{TAB}{PASSWORD}{ENTER}"));
+    autoTypeLayout->addWidget(m_editDefaultAutoTypeSequence);
+
+    autoTypeLayout->addWidget(new QLabel(
+        tr("Available placeholders:\n"
+           "  {USERNAME}, {PASSWORD}, {TITLE}, {URL}, {NOTES}\n"
+           "  {TAB}, {ENTER}, {SPACE}, {BACKSPACE}, {DELETE}\n"
+           "  {LEFT}, {RIGHT}, {UP}, {DOWN}, {HOME}, {END}\n"
+           "  {F1} - {F12}, {DELAY X} (delay X milliseconds)"),
+        autoTypeGroup));
+
+    layout->addWidget(autoTypeGroup);
+
+    layout->addStretch();
+    m_tabWidget->addTab(autoTypeTab, tr("Auto-Type"));
 }
 
 void OptionsDialog::createSetupTab()
@@ -569,6 +617,10 @@ void OptionsDialog::accept()
     m_clearClipboardOnDbClose = m_checkClearClipOnDbClose->isChecked();
     m_clipboardNoPersist = m_checkClipNoPersist->isChecked();
 
+    // Auto-Type
+    m_autoTypeEnabled = m_checkAutoTypeEnabled->isChecked();
+    m_defaultAutoTypeSequence = m_editDefaultAutoTypeSequence->text();
+
     // Setup
     m_usePuttyForURLs = m_checkUsePuttyForURLs->isChecked();
 
@@ -659,6 +711,10 @@ void OptionsDialog::loadSettings()
     setClearClipboardOnDbClose(settings.get("Memory/ClearClipOnDbClose", true).toBool());
     setClipboardNoPersist(settings.get("Memory/ClipNoPersist", true).toBool());
 
+    // Auto-Type settings
+    setAutoTypeEnabled(settings.getAutoTypeEnabled());
+    setDefaultAutoTypeSequence(settings.getDefaultAutoTypeSequence());
+
     // Setup settings
     setUsePuttyForURLs(settings.get("Setup/UsePuttyForURLs", false).toBool());
 
@@ -728,6 +784,10 @@ void OptionsDialog::saveSettings()
     settings.set("Memory/ClipboardTimeout", m_clipboardTimeoutSeconds);
     settings.set("Memory/ClearClipOnDbClose", m_clearClipboardOnDbClose);
     settings.set("Memory/ClipNoPersist", m_clipboardNoPersist);
+
+    // Auto-Type settings
+    settings.setAutoTypeEnabled(m_autoTypeEnabled);
+    settings.setDefaultAutoTypeSequence(m_defaultAutoTypeSequence);
 
     // Setup settings
     settings.set("Setup/UsePuttyForURLs", m_usePuttyForURLs);
@@ -1158,4 +1218,28 @@ void OptionsDialog::setAlwaysAllowRemoteControl(bool allow)
 {
     m_alwaysAllowRemoteControl = allow;
     m_checkAlwaysAllowRemoteControl->setChecked(allow);
+}
+
+// Auto-Type getters
+
+bool OptionsDialog::autoTypeEnabled() const
+{
+    return m_autoTypeEnabled;
+}
+
+QString OptionsDialog::defaultAutoTypeSequence() const
+{
+    return m_defaultAutoTypeSequence;
+}
+
+void OptionsDialog::setAutoTypeEnabled(bool enabled)
+{
+    m_autoTypeEnabled = enabled;
+    m_checkAutoTypeEnabled->setChecked(enabled);
+}
+
+void OptionsDialog::setDefaultAutoTypeSequence(const QString& sequence)
+{
+    m_defaultAutoTypeSequence = sequence;
+    m_editDefaultAutoTypeSequence->setText(sequence);
 }

@@ -5,6 +5,8 @@
 #include "AddEntryDialog.h"
 #include "../core/PwManager.h"
 #include "../core/util/PwUtil.h"
+#include "../autotype/AutoTypeConfig.h"
+#include "../core/platform/PwSettings.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -40,9 +42,9 @@ AddEntryDialog::AddEntryDialog(PwManager *pwManager, Mode mode, quint32 idValue,
         m_expirationDateTime->setEnabled(false);
     } else {
         // EditMode: Load entry data
-        if (m_pwManager && idValue < m_pwManager->getNumberOfEntries()) {
+        if ((m_pwManager != nullptr) && idValue < m_pwManager->getNumberOfEntries()) {
             PW_ENTRY *entry = m_pwManager->getEntry(idValue);
-            if (entry) {
+            if (entry != nullptr) {
                 populateFromEntry(entry);
             }
         }
@@ -60,6 +62,10 @@ AddEntryDialog::AddEntryDialog(PwManager *pwManager, Mode mode, quint32 idValue,
     connect(m_setAttachmentButton, &QPushButton::clicked, this, &AddEntryDialog::onSetAttachment);
     connect(m_saveAttachmentButton, &QPushButton::clicked, this, &AddEntryDialog::onSaveAttachment);
     connect(m_removeAttachmentButton, &QPushButton::clicked, this, &AddEntryDialog::onRemoveAttachment);
+
+    // Connect auto-type signals
+    connect(m_insertDefaultSeqButton, &QPushButton::clicked, this, &AddEntryDialog::onInsertDefaultSequence);
+    connect(m_selectWindowButton, &QPushButton::clicked, this, &AddEntryDialog::onSelectTargetWindow);
 
     onPasswordChanged();  // Update validation state
     updateAttachmentControls();  // Update attachment button state
@@ -181,6 +187,47 @@ void AddEntryDialog::setupUi()
 
     formLayout->addRow(attachmentGroup);
 
+    // Auto-Type group
+    QGroupBox *autoTypeGroup = new QGroupBox(tr("Auto-Type Configuration"), this);
+    QVBoxLayout *autoTypeLayout = new QVBoxLayout(autoTypeGroup);
+
+    QLabel *autoTypeHelp = new QLabel(
+        tr("Customize auto-type behavior for this entry. Leave empty to use default sequence."),
+        this);
+    autoTypeHelp->setWordWrap(true);
+    autoTypeHelp->setStyleSheet("font-size: 10px; color: #666;");
+    autoTypeLayout->addWidget(autoTypeHelp);
+
+    // Auto-Type Sequence
+    QHBoxLayout *sequenceLayout = new QHBoxLayout();
+    QLabel *sequenceLabel = new QLabel(tr("Custom Sequence:"), this);
+    sequenceLabel->setMinimumWidth(120);
+    m_autoTypeSequenceEdit = new QLineEdit(this);
+    m_autoTypeSequenceEdit->setPlaceholderText(tr("e.g., {USERNAME}{TAB}{PASSWORD}{ENTER}"));
+    m_insertDefaultSeqButton = new QPushButton(tr("Insert Default"), this);
+    m_insertDefaultSeqButton->setToolTip(tr("Insert the default auto-type sequence"));
+
+    sequenceLayout->addWidget(sequenceLabel);
+    sequenceLayout->addWidget(m_autoTypeSequenceEdit, 1);
+    sequenceLayout->addWidget(m_insertDefaultSeqButton);
+    autoTypeLayout->addLayout(sequenceLayout);
+
+    // Auto-Type Window
+    QHBoxLayout *windowLayout = new QHBoxLayout();
+    QLabel *windowLabel = new QLabel(tr("Target Window:"), this);
+    windowLabel->setMinimumWidth(120);
+    m_autoTypeWindowEdit = new QLineEdit(this);
+    m_autoTypeWindowEdit->setPlaceholderText(tr("e.g., Mozilla Firefox"));
+    m_selectWindowButton = new QPushButton(tr("Select Window..."), this);
+    m_selectWindowButton->setToolTip(tr("Select a currently open window"));
+
+    windowLayout->addWidget(windowLabel);
+    windowLayout->addWidget(m_autoTypeWindowEdit, 1);
+    windowLayout->addWidget(m_selectWindowButton);
+    autoTypeLayout->addLayout(windowLayout);
+
+    formLayout->addRow(autoTypeGroup);
+
     mainLayout->addLayout(formLayout);
 
     // Button box
@@ -203,7 +250,7 @@ void AddEntryDialog::setupUi()
 
 void AddEntryDialog::populateGroupCombo()
 {
-    if (!m_pwManager) {
+    if (m_pwManager == nullptr) {
         return;
     }
 
@@ -214,7 +261,7 @@ void AddEntryDialog::populateGroupCombo()
 
     for (quint32 i = 0; i < numGroups; ++i) {
         PW_GROUP *group = m_pwManager->getGroup(i);
-        if (group) {
+        if (group != nullptr) {
             QString groupName = QString::fromUtf8(group->pszGroupName);
 
             // Skip reserved "Search Results" group (cannot store entries)
@@ -242,7 +289,7 @@ void AddEntryDialog::populateGroupCombo()
 
 void AddEntryDialog::populateFromEntry(PW_ENTRY *entry)
 {
-    if (!entry) {
+    if (entry == nullptr) {
         return;
     }
 
@@ -255,7 +302,21 @@ void AddEntryDialog::populateFromEntry(PW_ENTRY *entry)
     m_passwordEdit->setText(QString::fromUtf8(entry->pszPassword));
     m_repeatPasswordEdit->setText(QString::fromUtf8(entry->pszPassword));
     m_urlEdit->setText(QString::fromUtf8(entry->pszURL));
-    m_notesEdit->setPlainText(QString::fromUtf8(entry->pszAdditional));
+
+    // Parse notes and auto-type configuration
+    QString fullNotes = QString::fromUtf8(entry->pszAdditional);
+    QString autoTypeSeq;
+    QString autoTypeWin;
+    AutoTypeConfig::parseFromNotes(fullNotes, autoTypeSeq, autoTypeWin);
+
+    // Set notes without auto-type config
+    QString cleanNotes = AutoTypeConfig::stripAutoTypeConfig(fullNotes);
+    m_notesEdit->setPlainText(cleanNotes);
+
+    // Set auto-type fields
+    m_autoTypeSequenceEdit->setText(autoTypeSeq);
+    m_autoTypeWindowEdit->setText(autoTypeWin);
+
     m_iconIdSpin->setValue(entry->uImageId);
 
     // Lock password again
@@ -275,12 +336,12 @@ void AddEntryDialog::populateFromEntry(PW_ENTRY *entry)
 
     // Check if entry expires (not equal to never-expire time)
     // Compare all fields of PW_TIME
-    bool expires = !(entry->tExpire.shYear == neverExpire.shYear &&
-                     entry->tExpire.btMonth == neverExpire.btMonth &&
-                     entry->tExpire.btDay == neverExpire.btDay &&
-                     entry->tExpire.btHour == neverExpire.btHour &&
-                     entry->tExpire.btMinute == neverExpire.btMinute &&
-                     entry->tExpire.btSecond == neverExpire.btSecond);
+    bool expires = (entry->tExpire.shYear != neverExpire.shYear ||
+                    entry->tExpire.btMonth != neverExpire.btMonth ||
+                    entry->tExpire.btDay != neverExpire.btDay ||
+                    entry->tExpire.btHour != neverExpire.btHour ||
+                    entry->tExpire.btMinute != neverExpire.btMinute ||
+                    entry->tExpire.btSecond != neverExpire.btSecond);
 
     m_expiresCheck->setChecked(expires);
     m_expirationDateTime->setEnabled(expires);
@@ -291,7 +352,7 @@ void AddEntryDialog::populateFromEntry(PW_ENTRY *entry)
     }
 
     // Set attachment
-    if (entry->pszBinaryDesc && entry->pszBinaryDesc[0] != '\0') {
+    if ((entry->pszBinaryDesc != nullptr) && entry->pszBinaryDesc[0] != '\0') {
         m_originalAttachment = QString::fromUtf8(entry->pszBinaryDesc);
         m_attachmentEdit->setText(m_originalAttachment);
     }
@@ -391,7 +452,15 @@ QString AddEntryDialog::getUrl() const
 
 QString AddEntryDialog::getNotes() const
 {
-    return m_notesEdit->toPlainText();
+    // Get the notes text (without auto-type config)
+    QString notes = m_notesEdit->toPlainText();
+
+    // Add auto-type configuration to notes using special prefixes
+    QString autoTypeSeq = getAutoTypeSequence();
+    QString autoTypeWin = getAutoTypeWindow();
+
+    // Format auto-type config into notes
+    return AutoTypeConfig::formatToNotes(notes, autoTypeSeq, autoTypeWin);
 }
 
 quint32 AddEntryDialog::getGroupId() const
@@ -497,7 +566,7 @@ void AddEntryDialog::onSaveAttachment()
     }
 
     PW_ENTRY* entry = m_pwManager->getEntry(m_entryIndex);
-    if (!entry || !entry->pszBinaryDesc || entry->pszBinaryDesc[0] == '\0') {
+    if ((entry == nullptr) || (entry->pszBinaryDesc == nullptr) || entry->pszBinaryDesc[0] == '\0') {
         QMessageBox::information(this, tr("Save Attachment"),
                                 tr("There is no file attached with this entry."));
         return;
@@ -537,4 +606,41 @@ void AddEntryDialog::onRemoveAttachment()
     m_attachmentModified = true;
 
     updateAttachmentControls();
+}
+
+// Auto-Type Methods
+
+QString AddEntryDialog::getAutoTypeSequence() const
+{
+    return m_autoTypeSequenceEdit->text().trimmed();
+}
+
+QString AddEntryDialog::getAutoTypeWindow() const
+{
+    return m_autoTypeWindowEdit->text().trimmed();
+}
+
+void AddEntryDialog::onInsertDefaultSequence()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/AddEntryDlg.cpp OnAutoTypeInsertDefaultSequence
+    // Get default auto-type sequence from settings
+    QString defaultSeq = PwSettings::instance().getDefaultAutoTypeSequence();
+
+    if (defaultSeq.isEmpty()) {
+        defaultSeq = QStringLiteral("{USERNAME}{TAB}{PASSWORD}{ENTER}");
+    }
+
+    m_autoTypeSequenceEdit->setText(defaultSeq);
+}
+
+void AddEntryDialog::onSelectTargetWindow()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/AddEntryDlg.cpp OnAutoTypeSelectTargetWindow
+    // TODO: Implement window enumeration and selection dialog
+    // For now, show a simple input dialog
+
+    QMessageBox::information(this, tr("Select Target Window"),
+        tr("Window selection is not yet implemented.\n\n"
+           "Please manually enter the target window title in the text field.\n"
+           "Example: \"Mozilla Firefox\" or \"*Firefox*\" (wildcards supported)."));
 }

@@ -9,6 +9,7 @@
   - Interface: Grid, fonts, colors, tray options
   - Files: Newline sequence, save options
   - Memory: Clipboard timeout and settings
+  - Auto-Type: Auto-type settings and default sequence
   - Setup: File associations, URL handlers
   - Advanced: All other application options
 */
@@ -66,6 +67,10 @@ public:
     int clipboardTimeoutSeconds() const { return m_clipboardTimeoutSeconds; }
     bool clearClipboardOnDbClose() const { return m_clearClipboardOnDbClose; }
     bool clipboardNoPersist() const { return m_clipboardNoPersist; }
+
+    // Auto-Type tab settings
+    bool autoTypeEnabled() const;
+    QString defaultAutoTypeSequence() const;
 
     // Setup tab settings
     bool usePuttyForURLs() const { return m_usePuttyForURLs; }
@@ -125,6 +130,8 @@ public:
     void setClipboardTimeoutSeconds(int seconds);
     void setClearClipboardOnDbClose(bool clear);
     void setClipboardNoPersist(bool noPersist);
+    void setAutoTypeEnabled(bool enabled);
+    void setDefaultAutoTypeSequence(const QString& sequence);
     void setUsePuttyForURLs(bool use);
     void setRememberLastFile(bool remember);
     void setAutoOpenLastDb(bool autoOpen);
@@ -175,6 +182,7 @@ private:
     void createInterfaceTab();
     void createFilesTab();
     void createMemoryTab();
+    void createAutoTypeTab();
     void createSetupTab();
     void createAdvancedTab();
 
@@ -219,6 +227,10 @@ private:
     QSpinBox* m_spinClipboardTimeout;
     QCheckBox* m_checkClearClipOnDbClose;
     QCheckBox* m_checkClipNoPersist;
+
+    // Auto-Type tab widgets
+    QCheckBox* m_checkAutoTypeEnabled;
+    QLineEdit* m_editDefaultAutoTypeSequence;
 
     // Setup tab widgets
     QPushButton* m_btnCreateAssoc;
@@ -288,6 +300,10 @@ private:
     int m_clipboardTimeoutSeconds;
     bool m_clearClipboardOnDbClose;
     bool m_clipboardNoPersist;
+
+    // Auto-Type
+    bool m_autoTypeEnabled;
+    QString m_defaultAutoTypeSequence;
 
     // Setup
     bool m_usePuttyForURLs;

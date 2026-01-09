@@ -26,7 +26,7 @@ class AddEntryDialog : public QDialog
     Q_OBJECT
 
 public:
-    enum Mode {
+    enum Mode : quint8 {
         AddMode,
         EditMode
     };
@@ -39,23 +39,27 @@ public:
     ~AddEntryDialog() override = default;
 
     // Get mode
-    Mode getMode() const { return m_mode; }
-    quint32 getEntryIndex() const { return m_entryIndex; }
+    [[nodiscard]] Mode getMode() const { return m_mode; }
+    [[nodiscard]] quint32 getEntryIndex() const { return m_entryIndex; }
 
     // Getters for dialog results
-    QString getTitle() const;
-    QString getUsername() const;
-    QString getPassword() const;
-    QString getUrl() const;
-    QString getNotes() const;
-    quint32 getGroupId() const;
-    quint32 getIconId() const;
-    PW_TIME getExpirationTime() const;
-    bool hasExpiration() const;
+    [[nodiscard]] QString getTitle() const;
+    [[nodiscard]] QString getUsername() const;
+    [[nodiscard]] QString getPassword() const;
+    [[nodiscard]] QString getUrl() const;
+    [[nodiscard]] QString getNotes() const;
+    [[nodiscard]] quint32 getGroupId() const;
+    [[nodiscard]] quint32 getIconId() const;
+    [[nodiscard]] PW_TIME getExpirationTime() const;
+    [[nodiscard]] bool hasExpiration() const;
 
     // Attachment getters
-    QString getAttachmentPath() const { return m_attachmentPath; }
-    bool isAttachmentModified() const { return m_attachmentModified; }
+    [[nodiscard]] QString getAttachmentPath() const { return m_attachmentPath; }
+    [[nodiscard]] bool isAttachmentModified() const { return m_attachmentModified; }
+
+    // Auto-type getters
+    [[nodiscard]] QString getAutoTypeSequence() const;
+    [[nodiscard]] QString getAutoTypeWindow() const;
 
 private slots:
     void onPasswordChanged();
@@ -67,6 +71,10 @@ private slots:
     void onSetAttachment();
     void onSaveAttachment();
     void onRemoveAttachment();
+
+    // Auto-type slots
+    void onInsertDefaultSequence();
+    void onSelectTargetWindow();
 
 private:
     void setupUi();
@@ -96,6 +104,12 @@ private:
     QPushButton *m_setAttachmentButton;
     QPushButton *m_saveAttachmentButton;
     QPushButton *m_removeAttachmentButton;
+
+    // Auto-type UI
+    QLineEdit *m_autoTypeSequenceEdit;
+    QLineEdit *m_autoTypeWindowEdit;
+    QPushButton *m_insertDefaultSeqButton;
+    QPushButton *m_selectWindowButton;
 
     // Data
     PwManager *m_pwManager;

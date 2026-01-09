@@ -272,8 +272,8 @@ void PwManager::getNeverExpireTime(PW_TIME* pPwTime)
 }
 
 int PwManager::setMasterKey(const QString& masterKey, bool bDiskDrive,
-                            const QString& secondKey, bool bOverwrite,
-                            const QString& providerName)
+                            const QString& secondKey, [[maybe_unused]] bool bOverwrite,
+                            [[maybe_unused]] const QString& providerName)
 {
     // TODO: Implement full master key setup
     // This is complex and involves:
@@ -2155,6 +2155,120 @@ QList<quint32> PwManager::findAll(const QString& findString, bool bCaseSensitive
         cnt = foundIndex + 1;
         if (cnt >= m_numEntries) {
             break;
+        }
+    }
+
+    return results;
+}
+
+QList<quint32> PwManager::findExpiredEntries(bool excludeBackups, bool excludeTANs)
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp _ShowExpiredEntries method
+    // Finds all entries that have expired (tExpire < current time)
+    QList<quint32> results;
+
+    // Get current time
+    PW_TIME currentTime;
+    PwUtil::getCurrentTime(&currentTime);
+
+    // Get IDs for backup groups
+    quint32 backupGroupId = 0, backupSrcGroupId = 0;
+    if (excludeBackups) {
+        backupGroupId = getGroupId(PWS_BACKUPGROUP);
+        backupSrcGroupId = getGroupId(PWS_BACKUPGROUP_SRC);
+    }
+
+    // Loop through all entries
+    for (quint32 i = 0; i < m_numEntries; ++i) {
+        PW_ENTRY* entry = getEntry(i);
+        if (!entry) continue;
+
+        // Apply filters
+        bool includeEntry = true;
+
+        // Filter: Exclude backups
+        if (excludeBackups && includeEntry) {
+            if (entry->uGroupId == backupGroupId || entry->uGroupId == backupSrcGroupId) {
+                includeEntry = false;
+            }
+        }
+
+        // Filter: Exclude TAN entries
+        if (excludeTANs && includeEntry && entry->pszTitle) {
+            if (QString::fromUtf8(entry->pszTitle) == "<TAN>") {
+                includeEntry = false;
+            }
+        }
+
+        // Check if expired
+        if (includeEntry) {
+            // Entry is expired if current time > expire time
+            if (PwUtil::compareTime(&currentTime, &entry->tExpire) > 0) {
+                results.append(i);
+            }
+        }
+    }
+
+    return results;
+}
+
+QList<quint32> PwManager::findSoonToExpireEntries(int days, bool excludeBackups, bool excludeTANs)
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp _ShowExpiredEntries method
+    // Finds entries that will expire within the specified number of days
+    QList<quint32> results;
+
+    // Get current time
+    PW_TIME currentTime;
+    PwUtil::getCurrentTime(&currentTime);
+
+    // Calculate date range (using MFC's date comparison method)
+    // MFC formula: date = (year * 13 * 32) + (month * 32) + day
+    const quint32 dwDateNow = (static_cast<quint32>(currentTime.shYear) * 13 * 32) +
+                              (static_cast<quint32>(currentTime.btMonth) * 32) +
+                              (static_cast<quint32>(currentTime.btDay) & 0xFF);
+    const quint32 dwSoonToExpireDays = static_cast<quint32>(days);
+
+    // Get IDs for backup groups
+    quint32 backupGroupId = 0, backupSrcGroupId = 0;
+    if (excludeBackups) {
+        backupGroupId = getGroupId(PWS_BACKUPGROUP);
+        backupSrcGroupId = getGroupId(PWS_BACKUPGROUP_SRC);
+    }
+
+    // Loop through all entries
+    for (quint32 i = 0; i < m_numEntries; ++i) {
+        PW_ENTRY* entry = getEntry(i);
+        if (!entry) continue;
+
+        // Apply filters
+        bool includeEntry = true;
+
+        // Filter: Exclude backups
+        if (excludeBackups && includeEntry) {
+            if (entry->uGroupId == backupGroupId || entry->uGroupId == backupSrcGroupId) {
+                includeEntry = false;
+            }
+        }
+
+        // Filter: Exclude TAN entries
+        if (excludeTANs && includeEntry && entry->pszTitle) {
+            if (QString::fromUtf8(entry->pszTitle) == "<TAN>") {
+                includeEntry = false;
+            }
+        }
+
+        // Check if expiring soon
+        if (includeEntry) {
+            // Calculate entry's expiration date using MFC formula
+            const quint32 dwDate = (static_cast<quint32>(entry->tExpire.shYear) * 13 * 32) +
+                                   (static_cast<quint32>(entry->tExpire.btMonth) * 32) +
+                                   (static_cast<quint32>(entry->tExpire.btDay) & 0xFF);
+
+            // Include if: expiration date >= today AND (expiration - today) <= days
+            if ((dwDate >= dwDateNow) && ((dwDate - dwDateNow) <= dwSoonToExpireDays)) {
+                results.append(i);
+            }
         }
     }
 

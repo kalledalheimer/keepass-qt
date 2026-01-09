@@ -1,0 +1,44 @@
+# clangd LSP configuration for Qt-KeePass
+
+CompileFlags:
+  # Use compile_commands.json from build directory
+  CompilationDatabase: build/
+
+  # Additional flags to help clangd understand the code
+  Add:
+    - -Wno-unknown-warning-option
+    - -ferror-limit=0
+
+Diagnostics:
+  # Suppress common false positives
+  Suppress:
+    - unused-includes
+    - unknown_typename
+    - pp_file_not_found
+
+  # Don't show warnings from system headers (Qt, OpenSSL, etc.)
+  UnusedIncludes: None
+
+  # Enable clang-tidy checks
+  ClangTidy:
+    Add:
+      - modernize-*
+      - performance-*
+      - readability-*
+    Remove:
+      - modernize-use-trailing-return-type
+      - readability-magic-numbers
+      - readability-identifier-length
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  Designators: Yes
+
+Index:
+  Background: Build
+  StandardLibrary: No
+
+Hover:
+  ShowAKA: Yes

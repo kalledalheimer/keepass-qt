@@ -27,6 +27,8 @@ add_library(keepass-gui STATIC
     DatabaseSettingsDialog.h
     OptionsDialog.cpp
     OptionsDialog.h
+    TanWizardDialog.cpp
+    TanWizardDialog.h
     CsvExportDialog.cpp
     CsvExportDialog.h
     CsvImportDialog.cpp

@@ -74,10 +74,27 @@ private slots:
     void onViewExpandAll();
     void onViewCollapseAll();
 
+    // Column visibility slots
+    void onViewColumnTitle(bool checked);
+    void onViewColumnUsername(bool checked);
+    void onViewColumnURL(bool checked);
+    void onViewColumnPassword(bool checked);
+    void onViewColumnNotes(bool checked);
+    void onViewColumnCreation(bool checked);
+    void onViewColumnLastMod(bool checked);
+    void onViewColumnLastAccess(bool checked);
+    void onViewColumnExpires(bool checked);
+    void onViewColumnUUID(bool checked);
+    void onViewColumnAttachment(bool checked);
+
     // Tools menu
     void onToolsOptions();
     void onToolsPasswordGenerator();
     void onToolsDatabaseSettings();
+    void onToolsTanWizard();
+    void onToolsRepairDatabase();
+    void onToolsShowExpiredEntries();
+    void onToolsShowExpiringSoon();
 
     // Help menu
     void onHelpContents();
@@ -189,10 +206,27 @@ private:
     QAction *m_actionViewExpandAll;
     QAction *m_actionViewCollapseAll;
 
+    // Column visibility actions
+    QAction *m_actionViewColumnTitle;
+    QAction *m_actionViewColumnUsername;
+    QAction *m_actionViewColumnURL;
+    QAction *m_actionViewColumnPassword;
+    QAction *m_actionViewColumnNotes;
+    QAction *m_actionViewColumnCreation;
+    QAction *m_actionViewColumnLastMod;
+    QAction *m_actionViewColumnLastAccess;
+    QAction *m_actionViewColumnExpires;
+    QAction *m_actionViewColumnUUID;
+    QAction *m_actionViewColumnAttachment;
+
     // Actions - Tools
     QAction *m_actionToolsOptions;
     QAction *m_actionToolsPasswordGenerator;
     QAction *m_actionToolsDatabaseSettings;
+    QAction *m_actionToolsTanWizard;
+    QAction *m_actionToolsRepairDatabase;
+    QAction *m_actionToolsShowExpiredEntries;
+    QAction *m_actionToolsShowExpiringSoon;
 
     // Actions - Help
     QAction *m_actionHelpContents;

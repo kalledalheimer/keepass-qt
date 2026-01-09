@@ -22,6 +22,7 @@
 #include <QProgressDialog>
 #include <QApplication>
 #include <QColor>
+#include <algorithm>
 #include <cmath>
 
 DatabaseSettingsDialog::DatabaseSettingsDialog(PwManager* pwManager, QWidget* parent)
@@ -155,7 +156,7 @@ void DatabaseSettingsDialog::setupUI()
 void DatabaseSettingsDialog::setEncryptionAlgorithm(int algorithm)
 {
     m_algorithm = algorithm;
-    if (m_algorithmCombo) {
+    if (m_algorithmCombo != nullptr) {
         m_algorithmCombo->setCurrentIndex(algorithm);
     }
 }
@@ -163,7 +164,7 @@ void DatabaseSettingsDialog::setEncryptionAlgorithm(int algorithm)
 void DatabaseSettingsDialog::setKeyTransformRounds(quint32 rounds)
 {
     m_keyRounds = rounds;
-    if (m_roundsSpin) {
+    if (m_roundsSpin != nullptr) {
         m_roundsSpin->setValue(rounds);
     }
 }
@@ -171,7 +172,7 @@ void DatabaseSettingsDialog::setKeyTransformRounds(quint32 rounds)
 void DatabaseSettingsDialog::setDefaultUsername(const QString& username)
 {
     m_defaultUsername = username;
-    if (m_usernameEdit) {
+    if (m_usernameEdit != nullptr) {
         m_usernameEdit->setText(username);
     }
 }
@@ -217,22 +218,20 @@ void DatabaseSettingsDialog::onCalculateRounds()
     quint64 rounds = KeyTransform::benchmark(1000);
 
     // Clamp to valid range
-    if (rounds > 0xFFFFFFFE) {
-        rounds = 0xFFFFFFFE;
-    }
+    rounds = std::min(rounds, static_cast<quint64>(0xFFFFFFFE));
 
     m_roundsSpin->setValue(static_cast<quint32>(rounds));
 
     progress.setValue(1);
 }
 
-void DatabaseSettingsDialog::onCustomColorToggled(bool checked)
+void DatabaseSettingsDialog::onCustomColorToggled([[maybe_unused]] bool checked)
 {
     enableControls();
     updateColorPreview();
 }
 
-void DatabaseSettingsDialog::onColorSliderChanged(int value)
+void DatabaseSettingsDialog::onColorSliderChanged([[maybe_unused]] int value)
 {
     updateColorPreview();
 }
@@ -247,7 +246,7 @@ void DatabaseSettingsDialog::onAccept()
     // Get color
     if (m_customColorCheck->isChecked()) {
         float hue = static_cast<float>(m_colorSlider->value());
-        QColor color = hsvToRgb(hue, 1.0f, 1.0f);
+        QColor color = hsvToRgb(hue, 1.0F, 1.0F);
 
         // Convert QColor to DWORD (0x00RRGGBB)
         m_color = (color.red() << 16) | (color.green() << 8) | color.blue();
@@ -261,12 +260,14 @@ void DatabaseSettingsDialog::onAccept()
 
 void DatabaseSettingsDialog::updateColorPreview()
 {
-    if (!m_colorPreview) return;
+    if (m_colorPreview == nullptr) {
+        return;
+    }
 
     QColor color;
     if (m_customColorCheck->isChecked()) {
         float hue = static_cast<float>(m_colorSlider->value());
-        color = hsvToRgb(hue, 1.0f, 1.0f);
+        color = hsvToRgb(hue, 1.0F, 1.0F);
     }
     else {
         color = QColor(0, 0, 255);  // Default blue
@@ -289,24 +290,26 @@ QColor DatabaseSettingsDialog::hsvToRgb(float h, float s, float v)
     // H: 0-360, S: 0-1, V: 0-1
 
     float c = v * s;
-    float x = c * (1.0f - std::fabs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
+    float x = c * (1.0F - std::fabs(std::fmod(h / 60.0F, 2.0F) - 1.0F));
     float m = v - c;
 
-    float r, g, b;
+    float r;
+    float g;
+    float b;
 
-    if (h < 60.0f) {
+    if (h < 60.0F) {
         r = c; g = x; b = 0;
     }
-    else if (h < 120.0f) {
+    else if (h < 120.0F) {
         r = x; g = c; b = 0;
     }
-    else if (h < 180.0f) {
+    else if (h < 180.0F) {
         r = 0; g = c; b = x;
     }
-    else if (h < 240.0f) {
+    else if (h < 240.0F) {
         r = 0; g = x; b = c;
     }
-    else if (h < 300.0f) {
+    else if (h < 300.0F) {
         r = x; g = 0; b = c;
     }
     else {
@@ -314,40 +317,40 @@ QColor DatabaseSettingsDialog::hsvToRgb(float h, float s, float v)
     }
 
     return QColor(
-        static_cast<int>((r + m) * 255.0f),
-        static_cast<int>((g + m) * 255.0f),
-        static_cast<int>((b + m) * 255.0f)
+        static_cast<int>((r + m) * 255.0F),
+        static_cast<int>((g + m) * 255.0F),
+        static_cast<int>((b + m) * 255.0F)
     );
 }
 
 float DatabaseSettingsDialog::rgbToHue(const QColor& color)
 {
     // Reference: MFC NewGUI_GetHue
-    float r = color.red() / 255.0f;
-    float g = color.green() / 255.0f;
-    float b = color.blue() / 255.0f;
+    float r = color.red() / 255.0F;
+    float g = color.green() / 255.0F;
+    float b = color.blue() / 255.0F;
 
     float cmax = std::max({r, g, b});
     float cmin = std::min({r, g, b});
     float delta = cmax - cmin;
 
-    if (delta == 0.0f) {
-        return 0.0f;
+    if (delta == 0.0F) {
+        return 0.0F;
     }
 
     float hue;
     if (cmax == r) {
-        hue = 60.0f * std::fmod((g - b) / delta, 6.0f);
+        hue = 60.0F * std::fmod((g - b) / delta, 6.0F);
     }
     else if (cmax == g) {
-        hue = 60.0f * ((b - r) / delta + 2.0f);
+        hue = 60.0F * ((b - r) / delta + 2.0F);
     }
     else {
-        hue = 60.0f * ((r - g) / delta + 4.0f);
+        hue = 60.0F * ((r - g) / delta + 4.0F);
     }
 
-    if (hue < 0.0f) {
-        hue += 360.0f;
+    if (hue < 0.0F) {
+        hue += 360.0F;
     }
 
     return hue;

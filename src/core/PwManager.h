@@ -46,13 +46,13 @@ namespace PwConstants {
 }
 
 // Encryption algorithms
-enum class PwAlgorithm : int {
+enum class PwAlgorithm : quint8 {
     AES = 0,
     TWOFISH = 1
 };
 
 // Error codes
-enum class PwError : int {
+enum class PwError : quint8 {
     UNKNOWN = 0,
     SUCCESS = 1,
     INVALID_PARAM = 2,
@@ -197,27 +197,27 @@ public:
                      bool bOverwrite, const QString& providerName);
 
     // Database info
-    quint32 getNumberOfEntries() const;
-    quint32 getNumberOfGroups() const;
-    quint32 getNumberOfItemsInGroup(const QString& groupName) const;
-    quint32 getNumberOfItemsInGroupN(quint32 idGroup) const;
+    [[nodiscard]] quint32 getNumberOfEntries() const;
+    [[nodiscard]] quint32 getNumberOfGroups() const;
+    [[nodiscard]] quint32 getNumberOfItemsInGroup(const QString& groupName) const;
+    [[nodiscard]] quint32 getNumberOfItemsInGroupN(quint32 idGroup) const;
 
     // Entry access
     PW_ENTRY* getEntry(quint32 dwIndex);
     PW_ENTRY* getEntryByGroup(quint32 idGroup, quint32 dwIndex);
-    quint32 getEntryByGroupN(quint32 idGroup, quint32 dwIndex) const;
+    [[nodiscard]] quint32 getEntryByGroupN(quint32 idGroup, quint32 dwIndex) const;
     PW_ENTRY* getEntryByUuid(const quint8* pUuid);
-    quint32 getEntryByUuidN(const quint8* pUuid) const;
-    quint32 getEntryPosInGroup(const PW_ENTRY* pEntry) const;
+    [[nodiscard]] quint32 getEntryByUuidN(const quint8* pUuid) const;
+    [[nodiscard]] quint32 getEntryPosInGroup(const PW_ENTRY* pEntry) const;
     PW_ENTRY* getLastEditedEntry();
 
     // Group access
     PW_GROUP* getGroup(quint32 dwIndex);
     PW_GROUP* getGroupById(quint32 idGroup);
-    quint32 getGroupByIdN(quint32 idGroup) const;
-    quint32 getGroupId(const QString& groupName) const;
-    quint32 getGroupIdByIndex(quint32 uGroupIndex) const;
-    quint32 getLastChildGroup(quint32 dwParentGroupIndex) const;
+    [[nodiscard]] quint32 getGroupByIdN(quint32 idGroup) const;
+    [[nodiscard]] quint32 getGroupId(const QString& groupName) const;
+    [[nodiscard]] quint32 getGroupIdByIndex(quint32 uGroupIndex) const;
+    [[nodiscard]] quint32 getLastChildGroup(quint32 dwParentGroupIndex) const;
     bool getGroupTree(quint32 idGroup, quint32* pGroupIndexes) const;
 
     // Add/modify/delete
@@ -259,10 +259,14 @@ public:
     QList<quint32> findAll(const QString& findString, bool bCaseSensitive, quint32 searchFlags,
                            bool excludeBackups, bool excludeExpired, QString* pError = nullptr);
 
+    // Expiration-based searches
+    QList<quint32> findExpiredEntries(bool excludeBackups = true, bool excludeTANs = true);
+    QList<quint32> findSoonToExpireEntries(int days = 7, bool excludeBackups = true, bool excludeTANs = true);
+
     // Encryption settings
-    int getAlgorithm() const;
+    [[nodiscard]] int getAlgorithm() const;
     bool setAlgorithm(int nAlgorithm);
-    quint32 getKeyEncRounds() const;
+    [[nodiscard]] quint32 getKeyEncRounds() const;
     void setKeyEncRounds(quint32 dwRounds);
 
     // Group tree management
@@ -270,31 +274,33 @@ public:
     void substEntryGroupIds(quint32 dwExistingId, quint32 dwNewId);
 
     // Database header and keys
-    const PW_DBHEADER* getLastDatabaseHeader() const;
+    [[nodiscard]] const PW_DBHEADER* getLastDatabaseHeader() const;
     void getRawMasterKey(quint8* pStorage);
     void setRawMasterKey(const quint8* pNewKey);
     void clearMasterKey(bool bClearKey, bool bClearTransformedKey);
-    QString getKeySource() const;
+    [[nodiscard]] QString getKeySource() const;
 
     // Properties and custom data
-    QString getPropertyString(quint32 dwPropertyId) const;
+    [[nodiscard]] QString getPropertyString(quint32 dwPropertyId) const;
     bool setPropertyString(quint32 dwPropertyId, const QString& value);
     QVector<QString>* accessPropertyStrArray(quint32 dwPropertyId);
     bool setCustomKvp(const QString& key, const QString& value);
-    QString getCustomKvp(const QString& key) const;
+    [[nodiscard]] QString getCustomKvp(const QString& key) const;
 
     // Settings
     void setTransactedFileWrites(bool bTransacted) { m_bUseTransactedFileWrites = bTransacted; }
-    QColor getColor() const;
+    [[nodiscard]] QColor getColor() const;
     void setColor(const QColor& clr);
-    QString getDefaultUserName() const;
+    [[nodiscard]] QString getDefaultUserName() const;
     void setDefaultUserName(const QString& strUserName);
 
     // UI state (public for direct access like MFC version)
     quint32 m_dwLastSelectedGroupId;
     quint32 m_dwLastTopVisibleGroupId;
+    // NOLINTBEGIN(modernize-avoid-c-arrays) - Public API compatibility with MFC version
     quint8 m_aLastSelectedEntryUuid[16];
     quint8 m_aLastTopVisibleEntryUuid[16];
+    // NOLINTEND(modernize-avoid-c-arrays)
 
 private:
     void cleanUp();
@@ -347,9 +353,11 @@ private:
     PW_ENTRY* m_pLastEditedEntry;
     QByteArray m_vHeaderHash;
 
+    // NOLINTBEGIN(modernize-avoid-c-arrays) - Cryptographic keys interface with C APIs (OpenSSL)
     quint8 m_sessionKey[PWM_SESSION_KEY_SIZE];  // Session key for in-memory encryption
     quint8 m_masterKey[32];                      // Hashed master password
     quint8 m_transformedMasterKey[32];           // Transformed key after N rounds
+    // NOLINTEND(modernize-avoid-c-arrays)
     int m_nAlgorithm;                            // Encryption algorithm (ALGO_AES or ALGO_TWOFISH)
     quint32 m_keyEncRounds;                      // Number of key transformation rounds
     QString m_strKeySource;

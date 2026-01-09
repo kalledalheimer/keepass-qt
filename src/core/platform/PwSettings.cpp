@@ -157,6 +157,41 @@ void PwSettings::setBackupDirectory(const QString& path)
     m_settings.setValue(KEY_BACKUP_DIRECTORY, path);
 }
 
+// TAN Wizard settings
+
+QString PwSettings::getTanChars() const
+{
+    return m_settings.value(KEY_TAN_CHARS, QString()).toString();
+}
+
+void PwSettings::setTanChars(const QString& chars)
+{
+    m_settings.setValue(KEY_TAN_CHARS, chars);
+}
+
+// Auto-Type Settings
+
+QString PwSettings::getDefaultAutoTypeSequence() const
+{
+    return m_settings.value(KEY_AUTO_TYPE_DEFAULT_SEQUENCE,
+                           QStringLiteral("{USERNAME}{TAB}{PASSWORD}{ENTER}")).toString();
+}
+
+void PwSettings::setDefaultAutoTypeSequence(const QString& sequence)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_DEFAULT_SEQUENCE, sequence);
+}
+
+bool PwSettings::getAutoTypeEnabled() const
+{
+    return m_settings.value(KEY_AUTO_TYPE_ENABLED, true).toBool();
+}
+
+void PwSettings::setAutoTypeEnabled(bool enabled)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_ENABLED, enabled);
+}
+
 // Generic access
 
 QVariant PwSettings::get(const QString& key, const QVariant& defaultValue) const

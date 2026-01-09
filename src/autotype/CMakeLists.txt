@@ -4,6 +4,8 @@
 set(AUTOTYPE_SOURCES
     AutoTypeSequence.cpp
     AutoTypeSequence.h
+    AutoTypeConfig.cpp
+    AutoTypeConfig.h
     platform/AutoTypePlatform.cpp
     platform/AutoTypePlatform.h
 )

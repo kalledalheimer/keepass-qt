@@ -12,6 +12,7 @@
 #include "FindDialog.h"
 #include "PasswordGeneratorDialog.h"
 #include "DatabaseSettingsDialog.h"
+#include "TanWizardDialog.h"
 #include "OptionsDialog.h"
 #include "CsvExportDialog.h"
 #include "CsvImportDialog.h"
@@ -21,6 +22,7 @@
 #include "../core/util/PwUtil.h"
 #include "../core/util/CsvUtil.h"
 #include "../autotype/AutoTypeSequence.h"
+#include "../autotype/AutoTypeConfig.h"
 #include "../autotype/platform/AutoTypePlatform.h"
 
 #include <QApplication>
@@ -256,6 +258,51 @@ void MainWindow::createActions()
     m_actionViewCollapseAll->setEnabled(false);
     connect(m_actionViewCollapseAll, &QAction::triggered, this, &MainWindow::onViewCollapseAll);
 
+    // Column visibility actions
+    m_actionViewColumnTitle = new QAction(tr("Show &Title Column"), this);
+    m_actionViewColumnTitle->setCheckable(true);
+    connect(m_actionViewColumnTitle, &QAction::triggered, this, &MainWindow::onViewColumnTitle);
+
+    m_actionViewColumnUsername = new QAction(tr("Show &User Name Column"), this);
+    m_actionViewColumnUsername->setCheckable(true);
+    connect(m_actionViewColumnUsername, &QAction::triggered, this, &MainWindow::onViewColumnUsername);
+
+    m_actionViewColumnURL = new QAction(tr("Show U&RL Column"), this);
+    m_actionViewColumnURL->setCheckable(true);
+    connect(m_actionViewColumnURL, &QAction::triggered, this, &MainWindow::onViewColumnURL);
+
+    m_actionViewColumnPassword = new QAction(tr("Show &Password Column"), this);
+    m_actionViewColumnPassword->setCheckable(true);
+    connect(m_actionViewColumnPassword, &QAction::triggered, this, &MainWindow::onViewColumnPassword);
+
+    m_actionViewColumnNotes = new QAction(tr("Show &Notes Column"), this);
+    m_actionViewColumnNotes->setCheckable(true);
+    connect(m_actionViewColumnNotes, &QAction::triggered, this, &MainWindow::onViewColumnNotes);
+
+    m_actionViewColumnCreation = new QAction(tr("Show &Creation Time Column"), this);
+    m_actionViewColumnCreation->setCheckable(true);
+    connect(m_actionViewColumnCreation, &QAction::triggered, this, &MainWindow::onViewColumnCreation);
+
+    m_actionViewColumnLastMod = new QAction(tr("Show Last &Modification Column"), this);
+    m_actionViewColumnLastMod->setCheckable(true);
+    connect(m_actionViewColumnLastMod, &QAction::triggered, this, &MainWindow::onViewColumnLastMod);
+
+    m_actionViewColumnLastAccess = new QAction(tr("Show Last &Access Column"), this);
+    m_actionViewColumnLastAccess->setCheckable(true);
+    connect(m_actionViewColumnLastAccess, &QAction::triggered, this, &MainWindow::onViewColumnLastAccess);
+
+    m_actionViewColumnExpires = new QAction(tr("Show &Expires Column"), this);
+    m_actionViewColumnExpires->setCheckable(true);
+    connect(m_actionViewColumnExpires, &QAction::triggered, this, &MainWindow::onViewColumnExpires);
+
+    m_actionViewColumnUUID = new QAction(tr("Show UUI&D Column"), this);
+    m_actionViewColumnUUID->setCheckable(true);
+    connect(m_actionViewColumnUUID, &QAction::triggered, this, &MainWindow::onViewColumnUUID);
+
+    m_actionViewColumnAttachment = new QAction(tr("Show &Attachment Column"), this);
+    m_actionViewColumnAttachment->setCheckable(true);
+    connect(m_actionViewColumnAttachment, &QAction::triggered, this, &MainWindow::onViewColumnAttachment);
+
     // Tools menu actions
     m_actionToolsOptions = new QAction(tr("&Options..."), this);
     m_actionToolsOptions->setStatusTip(tr("Configure application settings"));
@@ -270,6 +317,26 @@ void MainWindow::createActions()
     m_actionToolsDatabaseSettings->setStatusTip(tr("Configure database settings"));
     m_actionToolsDatabaseSettings->setEnabled(false);
     connect(m_actionToolsDatabaseSettings, &QAction::triggered, this, &MainWindow::onToolsDatabaseSettings);
+
+    m_actionToolsTanWizard = new QAction(tr("&TAN Wizard..."), this);
+    m_actionToolsTanWizard->setStatusTip(tr("Create multiple TAN entries at once"));
+    m_actionToolsTanWizard->setEnabled(false);
+    connect(m_actionToolsTanWizard, &QAction::triggered, this, &MainWindow::onToolsTanWizard);
+
+    m_actionToolsRepairDatabase = new QAction(tr("&Repair Database..."), this);
+    m_actionToolsRepairDatabase->setStatusTip(tr("Attempt to open a corrupted database file"));
+    m_actionToolsRepairDatabase->setEnabled(true);  // Always enabled (opens file with no DB open)
+    connect(m_actionToolsRepairDatabase, &QAction::triggered, this, &MainWindow::onToolsRepairDatabase);
+
+    m_actionToolsShowExpiredEntries = new QAction(tr("Show &Expired Entries"), this);
+    m_actionToolsShowExpiredEntries->setStatusTip(tr("Show all expired entries"));
+    m_actionToolsShowExpiredEntries->setEnabled(false);
+    connect(m_actionToolsShowExpiredEntries, &QAction::triggered, this, &MainWindow::onToolsShowExpiredEntries);
+
+    m_actionToolsShowExpiringSoon = new QAction(tr("Show Entries Expiring &Soon"), this);
+    m_actionToolsShowExpiringSoon->setStatusTip(tr("Show entries that will expire soon"));
+    m_actionToolsShowExpiringSoon->setEnabled(false);
+    connect(m_actionToolsShowExpiringSoon, &QAction::triggered, this, &MainWindow::onToolsShowExpiringSoon);
 
     // Help menu actions
     m_actionHelpContents = new QAction(tr("&Contents"), this);
@@ -326,11 +393,34 @@ void MainWindow::createMenus()
     viewMenu->addSeparator();
     viewMenu->addAction(m_actionViewExpandAll);
     viewMenu->addAction(m_actionViewCollapseAll);
+    viewMenu->addSeparator();
+
+    // Column visibility submenu
+    QMenu *columnsMenu = viewMenu->addMenu(tr("&Columns"));
+    columnsMenu->addAction(m_actionViewColumnTitle);
+    columnsMenu->addAction(m_actionViewColumnUsername);
+    columnsMenu->addAction(m_actionViewColumnURL);
+    columnsMenu->addAction(m_actionViewColumnPassword);
+    columnsMenu->addAction(m_actionViewColumnNotes);
+    columnsMenu->addSeparator();
+    columnsMenu->addAction(m_actionViewColumnCreation);
+    columnsMenu->addAction(m_actionViewColumnLastMod);
+    columnsMenu->addAction(m_actionViewColumnLastAccess);
+    columnsMenu->addAction(m_actionViewColumnExpires);
+    columnsMenu->addSeparator();
+    columnsMenu->addAction(m_actionViewColumnUUID);
+    columnsMenu->addAction(m_actionViewColumnAttachment);
 
     // Tools menu
     QMenu *toolsMenu = menuBar()->addMenu(tr("&Tools"));
     toolsMenu->addAction(m_actionToolsPasswordGenerator);
     toolsMenu->addAction(m_actionToolsDatabaseSettings);
+    toolsMenu->addAction(m_actionToolsTanWizard);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(m_actionToolsRepairDatabase);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(m_actionToolsShowExpiredEntries);
+    toolsMenu->addAction(m_actionToolsShowExpiringSoon);
     toolsMenu->addSeparator();
     toolsMenu->addAction(m_actionToolsOptions);
 
@@ -453,7 +543,7 @@ void MainWindow::updateWindowTitle()
 
 void MainWindow::updateActions()
 {
-    bool hasSelection = m_entryView && m_entryView->selectionModel()->hasSelection();
+    bool hasSelection = (m_entryView != nullptr) && m_entryView->selectionModel()->hasSelection();
     bool unlocked = m_hasDatabase && !m_isLocked;
 
     // File menu - most actions disabled when locked
@@ -482,14 +572,33 @@ void MainWindow::updateActions()
     m_actionViewExpandAll->setEnabled(m_hasDatabase);
     m_actionViewCollapseAll->setEnabled(m_hasDatabase);
 
+    // Column visibility actions - sync with model state
+    if (m_entryModel != nullptr) {
+        m_actionViewColumnTitle->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnTitle));
+        m_actionViewColumnUsername->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnUsername));
+        m_actionViewColumnURL->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnURL));
+        m_actionViewColumnPassword->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnPassword));
+        m_actionViewColumnNotes->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnNotes));
+        m_actionViewColumnCreation->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnCreationTime));
+        m_actionViewColumnLastMod->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnLastModification));
+        m_actionViewColumnLastAccess->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnLastAccess));
+        m_actionViewColumnExpires->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnExpires));
+        m_actionViewColumnUUID->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnUUID));
+        m_actionViewColumnAttachment->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnAttachment));
+    }
+
     // Tools menu - disabled when locked
     m_actionToolsPasswordGenerator->setEnabled(unlocked);
     m_actionToolsDatabaseSettings->setEnabled(unlocked);
+    m_actionToolsTanWizard->setEnabled(unlocked);
+    m_actionToolsRepairDatabase->setEnabled(!m_hasDatabase && !m_isLocked);  // Only enabled when NO DB is open
+    m_actionToolsShowExpiredEntries->setEnabled(unlocked);
+    m_actionToolsShowExpiringSoon->setEnabled(unlocked);
 }
 
 void MainWindow::updateStatusBar()
 {
-    if (!m_pwManager) {
+    if (m_pwManager == nullptr) {
         m_statusLabel->setText(tr("Ready"));
         return;
     }
@@ -503,16 +612,16 @@ void MainWindow::updateStatusBar()
 void MainWindow::refreshModels()
 {
     // Notify models that the database has changed
-    if (m_groupModel) {
+    if (m_groupModel != nullptr) {
         m_groupModel->refresh();
     }
 
-    if (m_entryModel) {
+    if (m_entryModel != nullptr) {
         m_entryModel->refresh();
     }
 
     // Expand the root group by default
-    if (m_groupView) {
+    if (m_groupView != nullptr) {
         m_groupView->expandToDepth(0);
     }
 }
@@ -542,11 +651,11 @@ bool MainWindow::confirmSaveChanges()
 
     if (result == QMessageBox::Save) {
         return saveDatabase();
-    } else if (result == QMessageBox::Discard) {
-        return true;
-    } else {
-        return false;
     }
+    if (result == QMessageBox::Discard) {
+        return true;
+    }
+    return false;
 }
 
 // Slot implementations (placeholders for now)
@@ -724,7 +833,7 @@ void MainWindow::lockWorkspace()
     updateWindowTitle();
 
     // Clear entry model data (hide passwords)
-    if (m_entryModel) {
+    if (m_entryModel != nullptr) {
         m_entryModel->setIndexFilter(QList<quint32>());  // Show nothing
     }
 
@@ -777,7 +886,7 @@ bool MainWindow::unlockWorkspace()
     updateWindowTitle();
 
     // Restore entry view
-    if (m_entryModel) {
+    if (m_entryModel != nullptr) {
         m_entryModel->clearIndexFilter();
         onGroupSelectionChanged();  // Refresh current group
     }
@@ -1011,7 +1120,7 @@ void MainWindow::onEditAddEntry()
     QModelIndex currentIndex = m_groupView->currentIndex();
     if (currentIndex.isValid()) {
         PW_GROUP *group = m_groupModel->getGroup(currentIndex);
-        if (group) {
+        if (group != nullptr) {
             selectedGroupId = group->uGroupId;
         }
     }
@@ -1138,7 +1247,7 @@ void MainWindow::onEditEditEntry()
 
     // Get the entry from the model
     PW_ENTRY *entry = m_entryModel->getEntry(currentIndex);
-    if (!entry) {
+    if (entry == nullptr) {
         QMessageBox::critical(this, tr("Error"),
                             tr("Failed to get entry data."));
         return;
@@ -1406,7 +1515,7 @@ void MainWindow::onEditDuplicateEntry()
 void MainWindow::onEditDeleteEntry()
 {
     // Check if database is open
-    if (!m_pwManager || !m_hasDatabase) {
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
         return;
     }
 
@@ -1419,7 +1528,7 @@ void MainWindow::onEditDeleteEntry()
     }
 
     PW_ENTRY *entry = m_entryModel->getEntry(currentIndex);
-    if (!entry) {
+    if (entry == nullptr) {
         return;
     }
 
@@ -1484,7 +1593,7 @@ void MainWindow::onEditDeleteEntry()
 void MainWindow::onEditDeleteGroup()
 {
     // Check if database is open
-    if (!m_pwManager || !m_hasDatabase) {
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
         return;
     }
 
@@ -1594,7 +1703,7 @@ void MainWindow::onEditDeleteGroup()
 void MainWindow::onEditFind()
 {
     // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp _Find method
-    if (!m_pwManager || !m_hasDatabase) {
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
         return;
     }
 
@@ -1716,7 +1825,7 @@ void MainWindow::onToolsPasswordGenerator()
 void MainWindow::onToolsDatabaseSettings()
 {
     // Reference: MFC shows DbSettingsDlg
-    if (!m_pwManager || !m_hasDatabase) {
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
         return;
     }
 
@@ -1768,6 +1877,227 @@ void MainWindow::onToolsDatabaseSettings()
     }
 }
 
+void MainWindow::onToolsTanWizard()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnExtrasTanWizard
+    if ((m_pwManager == nullptr) || !m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Get currently selected group
+    QModelIndex groupIndex = m_groupView->currentIndex();
+    if (!groupIndex.isValid()) {
+        QMessageBox::warning(this, tr("TAN Wizard"),
+            tr("Please select a group where the TAN entries should be added."));
+        return;
+    }
+
+    PW_GROUP* group = m_groupModel->getGroup(groupIndex);
+    if (group == nullptr) {
+        return;
+    }
+
+    quint32 groupId = group->uGroupId;
+
+    QString groupName = QString::fromUtf8(group->pszGroupName);
+
+    // Show TAN Wizard dialog
+    TanWizardDialog dialog(groupName, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        // Get parsed TANs from dialog
+        QStringList tanList = dialog.getTanList();
+        bool useNumbering = dialog.useSequentialNumbering();
+        int startNumber = dialog.getStartNumber();
+
+        if (tanList.isEmpty()) {
+            QMessageBox::information(this, tr("TAN Wizard"),
+                tr("No valid TANs were found in the input."));
+            return;
+        }
+
+        // Create entries for each TAN
+        PW_ENTRY entryTemplate;
+        std::memset(&entryTemplate, 0, sizeof(PW_ENTRY));
+
+        // Get current time for all entries
+        PW_TIME currentTime;
+        PwUtil::getCurrentTime(&currentTime);
+
+        entryTemplate.tCreation = currentTime;
+        entryTemplate.tLastMod = currentTime;
+        entryTemplate.tLastAccess = currentTime;
+        entryTemplate.uGroupId = groupId;
+        entryTemplate.uImageId = 29;  // TAN icon (MFC uses 29)
+
+        // Set never-expire time
+        PwManager::getNeverExpireTime(&entryTemplate.tExpire);
+
+        // Add each TAN as a separate entry
+        int tanNumber = startNumber;
+        for (const QString& tan : tanList) {
+            // Title is always "<TAN>"
+            QByteArray titleBytes = QString("<TAN>").toUtf8();
+            entryTemplate.pszTitle = const_cast<char*>(titleBytes.constData());
+
+            // Password is the TAN code
+            QByteArray passwordBytes = tan.toUtf8();
+            entryTemplate.pszPassword = const_cast<char*>(passwordBytes.constData());
+            entryTemplate.uPasswordLen = passwordBytes.length();
+
+            // Username is the sequential number (if enabled)
+            QByteArray usernameBytes;
+            if (useNumbering) {
+                usernameBytes = QString::number(tanNumber).toUtf8();
+                entryTemplate.pszUserName = const_cast<char*>(usernameBytes.constData());
+                tanNumber++;
+            } else {
+                entryTemplate.pszUserName = const_cast<char*>("");
+            }
+
+            // URL and notes are empty
+            entryTemplate.pszURL = const_cast<char*>("");
+            entryTemplate.pszAdditional = const_cast<char*>("");
+
+            // No binary attachment
+            entryTemplate.pBinaryData = nullptr;
+            entryTemplate.pszBinaryDesc = const_cast<char*>("");
+            entryTemplate.uBinaryDataLen = 0;
+
+            // UUID will be generated by AddEntry
+            std::memset(&entryTemplate.uuid[0], 0, 16);
+
+            // Add the entry
+            bool success = m_pwManager->addEntry(&entryTemplate);
+            if (!success) {
+                QMessageBox::warning(this, tr("TAN Wizard"),
+                    tr("Failed to add TAN entry: %1").arg(tan));
+                break;
+            }
+        }
+
+        // Update UI
+        m_isModified = true;
+        refreshModels();
+        updateWindowTitle();
+        updateActions();
+
+        m_statusLabel->setText(tr("Added %1 TAN entries to group '%2'")
+            .arg(tanList.count()).arg(groupName));
+    }
+}
+
+void MainWindow::onToolsRepairDatabase()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnExtrasRepairDb
+
+    // Cannot repair if a database is already open
+    if (m_hasDatabase) {
+        QMessageBox::warning(this, tr("Repair Database"),
+            tr("Please close the current database before attempting to repair another database."));
+        return;
+    }
+
+    // Show warning dialog explaining the risks
+    QString warningTitle = tr("Warning!");
+    QString warningMsg = tr(
+        "In repair mode, the integrity of the data is not checked (in order to rescue "
+        "as much data as possible). When no integrity checks are performed, corrupted/"
+        "malicious data might be incorporated into the database.\n\n"
+        "Thus the repair functionality should only be used when there really is no other "
+        "solution. If you use it, afterwards you should thoroughly check your whole database "
+        "for corrupted/malicious data.\n\n"
+        "Are you sure you want to attempt to repair a database file?");
+
+    QMessageBox::StandardButton reply = QMessageBox::warning(this,
+        warningTitle, warningMsg,
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    // Select database file to repair
+    QString filePath = QFileDialog::getOpenFileName(this,
+        tr("Select Database to Repair"),
+        QDir::homePath(),
+        tr("KeePass Databases (*.kdb);;All Files (*)"));
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    // Open master key dialog
+    MasterKeyDialog keyDialog(MasterKeyDialog::OpenExisting, this);
+    keyDialog.setWindowTitle(tr("Enter Master Key to Repair Database"));
+
+    if (keyDialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    // Set master key
+    QString password = keyDialog.getPassword();
+    int keyResult = m_pwManager->setMasterKey(password, true, "", false, "");
+
+    if (keyResult != PWE_SUCCESS) {
+        QMessageBox::critical(this, tr("Error"),
+            tr("Failed to set master key."));
+        return;
+    }
+
+    // Attempt to open database in repair mode
+    PWDB_REPAIR_INFO repairInfo;
+    int result = m_pwManager->openDatabase(filePath, &repairInfo);
+
+    if (result != PWE_SUCCESS) {
+        // Even repair mode failed
+        QString errorMsg;
+        switch (result) {
+        case PWE_INVALID_KEY:
+            errorMsg = tr("The master password or key file is incorrect.");
+            break;
+        case PWE_FILEERROR_READ:
+            errorMsg = tr("Could not open the file. It may be in use by another application.");
+            break;
+        case PWE_CRYPT_ERROR:
+            errorMsg = tr("Decryption failed. The file may be severely corrupted.");
+            break;
+        default:
+            errorMsg = tr("Failed to open database (Error code: %1)").arg(result);
+            break;
+        }
+
+        QMessageBox::critical(this, tr("Repair Failed"), errorMsg);
+        return;
+    }
+
+    // Database opened successfully in repair mode
+    m_currentFilePath = filePath;
+    m_hasDatabase = true;
+    m_isModified = true;  // Mark as modified since we rescued data
+
+    // Update UI
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    updateStatusBar();
+
+    // Show success message with repair statistics
+    QString successMsg = tr(
+        "Database opened in repair mode.\n\n"
+        "Statistics:\n"
+        "- Groups recovered: %1\n"
+        "- Entries recovered: %2\n"
+        "- Recognized meta streams: %3\n\n"
+        "IMPORTANT: Please review all data for corruption and save to a new file.")
+        .arg(m_pwManager->getNumberOfGroups())
+        .arg(m_pwManager->getNumberOfEntries())
+        .arg(repairInfo.dwRecognizedMetaStreamCount);
+
+    QMessageBox::information(this, tr("Repair Successful"), successMsg);
+
+    m_statusLabel->setText(tr("Database opened in repair mode - VERIFY ALL DATA"));
+}
+
 void MainWindow::onHelpContents()
 {
     QMessageBox::information(this, tr("Help"),
@@ -1787,7 +2117,7 @@ void MainWindow::onHelpAbout()
 
 void MainWindow::onGroupSelectionChanged()
 {
-    if (!m_pwManager || !m_hasDatabase) {
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
         return;
     }
 
@@ -1796,7 +2126,7 @@ void MainWindow::onGroupSelectionChanged()
 
     if (currentIndex.isValid()) {
         PW_GROUP *group = m_groupModel->getGroup(currentIndex);
-        if (group) {
+        if (group != nullptr) {
             // Filter entries to show only those in selected group
             m_entryModel->setGroupFilter(group->uGroupId);
 
@@ -2030,7 +2360,7 @@ bool MainWindow::closeDatabase()
     m_currentFilePath.clear();
 
     // Clear the database
-    if (m_pwManager) {
+    if (m_pwManager != nullptr) {
         m_pwManager->newDatabase(); // Reset to empty state
     }
 
@@ -2049,7 +2379,7 @@ bool MainWindow::closeDatabase()
 void MainWindow::onEditCopyUsername()
 {
     // Reference: MFC OnPwlistCopyUser
-    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+    if ((m_entryView == nullptr) || !m_entryView->selectionModel()->hasSelection()) {
         return;
     }
 
@@ -2060,7 +2390,7 @@ void MainWindow::onEditCopyUsername()
 
     // Get the entry from the model
     PW_ENTRY* entry = m_entryModel->getEntry(index);
-    if (!entry) {
+    if (entry == nullptr) {
         return;
     }
 
@@ -2075,7 +2405,7 @@ void MainWindow::onEditCopyUsername()
 void MainWindow::onEditCopyPassword()
 {
     // Reference: MFC OnPwlistCopyPw
-    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+    if ((m_entryView == nullptr) || !m_entryView->selectionModel()->hasSelection()) {
         return;
     }
 
@@ -2086,7 +2416,7 @@ void MainWindow::onEditCopyPassword()
 
     // Get the entry from the model
     PW_ENTRY* entry = m_entryModel->getEntry(index);
-    if (!entry) {
+    if (entry == nullptr) {
         return;
     }
 
@@ -2135,7 +2465,7 @@ void MainWindow::clearClipboardIfOwner()
 void MainWindow::onEditVisitUrl()
 {
     // Get currently selected entry
-    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+    if ((m_entryView == nullptr) || !m_entryView->selectionModel()->hasSelection()) {
         return;
     }
 
@@ -2145,7 +2475,7 @@ void MainWindow::onEditVisitUrl()
     }
 
     PW_ENTRY* entry = m_entryModel->getEntry(index);
-    if (!entry) {
+    if (entry == nullptr) {
         return;
     }
 
@@ -2214,7 +2544,7 @@ void MainWindow::onEditAutoType()
     // Reference: MFC CPwSafeDlg::OnPwlistAutoType (PwSafeDlg.cpp:10138)
 
     // Get currently selected entry
-    if (!m_entryView || !m_entryView->selectionModel()->hasSelection()) {
+    if ((m_entryView == nullptr) || !m_entryView->selectionModel()->hasSelection()) {
         return;
     }
 
@@ -2224,7 +2554,7 @@ void MainWindow::onEditAutoType()
     }
 
     PW_ENTRY* entry = m_entryModel->getEntry(index);
-    if (!entry) {
+    if (entry == nullptr) {
         return;
     }
 
@@ -2256,11 +2586,23 @@ void MainWindow::onEditAutoType()
         }
     }
 
-    // Get auto-type sequence (default: {USERNAME}{TAB}{PASSWORD}{ENTER})
-    QString sequence = AutoTypeSequence::defaultSequence();
+    // Get auto-type sequence - check for custom sequence in entry notes
+    QString sequence;
+    QString windowTitle;
 
-    // TODO: Check for custom sequence in entry notes (future feature)
-    // For now, always use default sequence
+    // Parse auto-type configuration from entry notes
+    if (entry->pszAdditional != nullptr) {
+        QString notes = QString::fromUtf8(entry->pszAdditional);
+        AutoTypeConfig::parseFromNotes(notes, sequence, windowTitle);
+    }
+
+    // If no custom sequence, use default from settings or built-in default
+    if (sequence.isEmpty()) {
+        sequence = PwSettings::instance().getDefaultAutoTypeSequence();
+        if (sequence.isEmpty()) {
+            sequence = AutoTypeSequence::defaultSequence();
+        }
+    }
 
     // Parse and compile the sequence
     AutoTypeSequence parser;
@@ -2412,7 +2754,7 @@ void MainWindow::changeEvent(QEvent *event)
             PwSettings& settings = PwSettings::instance();
             bool minimizeToTray = settings.get("Interface/MinimizeToTray", false).toBool();
 
-            if (minimizeToTray && m_systemTrayIcon && m_systemTrayIcon->isVisible()) {
+            if (minimizeToTray && (m_systemTrayIcon != nullptr) && m_systemTrayIcon->isVisible()) {
                 // Hide window and show in tray
                 hide();
                 event->ignore();
@@ -2479,7 +2821,7 @@ void MainWindow::createSystemTrayIcon()
 
 void MainWindow::updateTrayIcon()
 {
-    if (!m_systemTrayIcon) {
+    if (m_systemTrayIcon == nullptr) {
         return;
     }
 
@@ -2518,14 +2860,14 @@ void MainWindow::updateTrayIcon()
 
 void MainWindow::showTrayIcon()
 {
-    if (m_systemTrayIcon) {
+    if (m_systemTrayIcon != nullptr) {
         m_systemTrayIcon->show();
     }
 }
 
 void MainWindow::hideTrayIcon()
 {
-    if (m_systemTrayIcon) {
+    if (m_systemTrayIcon != nullptr) {
         m_systemTrayIcon->hide();
     }
 }
@@ -2575,4 +2917,134 @@ void MainWindow::onTrayExit()
 {
     // Exit application
     close();
+}
+
+// Column visibility slots
+
+void MainWindow::onViewColumnTitle(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnTitle, checked);
+    }
+}
+
+void MainWindow::onViewColumnUsername(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnUsername, checked);
+    }
+}
+
+void MainWindow::onViewColumnURL(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnURL, checked);
+    }
+}
+
+void MainWindow::onViewColumnPassword(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnPassword, checked);
+    }
+}
+
+void MainWindow::onViewColumnNotes(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnNotes, checked);
+    }
+}
+
+void MainWindow::onViewColumnCreation(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnCreationTime, checked);
+    }
+}
+
+void MainWindow::onViewColumnLastMod(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnLastModification, checked);
+    }
+}
+
+void MainWindow::onViewColumnLastAccess(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnLastAccess, checked);
+    }
+}
+
+void MainWindow::onViewColumnExpires(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnExpires, checked);
+    }
+}
+
+void MainWindow::onViewColumnUUID(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnUUID, checked);
+    }
+}
+
+void MainWindow::onViewColumnAttachment(bool checked)
+{
+    if (m_entryModel != nullptr) {
+        m_entryModel->setColumnVisible(EntryModel::ColumnAttachment, checked);
+    }
+}
+
+// Database Tools
+
+void MainWindow::onToolsShowExpiredEntries()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnExtrasShowExpired
+    if ((m_pwManager == nullptr) || !m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Find all expired entries
+    QList<quint32> expiredIndices = m_pwManager->findExpiredEntries(true, true);
+
+    if (expiredIndices.isEmpty()) {
+        QMessageBox::information(this, tr("Expired Entries"),
+            tr("There are no expired entries in this database."));
+        return;
+    }
+
+    // Show expired entries in the entry list by applying index filter
+    m_entryModel->setIndexFilter(expiredIndices);
+
+    // Update status bar to show count
+    m_statusLabel->setText(tr("Found %1 expired entries").arg(expiredIndices.count()));
+}
+
+void MainWindow::onToolsShowExpiringSoon()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp _ShowExpiredEntries with bShowSoonToExpire
+    if ((m_pwManager == nullptr) || !m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Default: 7 days (MFC uses _GetSoonToExpireDays() which defaults to 7)
+    int days = 7;
+
+    // Find entries expiring within the next 7 days
+    QList<quint32> expiringIndices = m_pwManager->findSoonToExpireEntries(days, true, true);
+
+    if (expiringIndices.isEmpty()) {
+        QMessageBox::information(this, tr("Expiring Soon"),
+            tr("There are no entries expiring within the next %1 days.").arg(days));
+        return;
+    }
+
+    // Show expiring entries in the entry list by applying index filter
+    m_entryModel->setIndexFilter(expiringIndices);
+
+    // Update status bar to show count
+    m_statusLabel->setText(tr("Found %1 entries expiring within %2 days").arg(expiringIndices.count()).arg(days));
 }
