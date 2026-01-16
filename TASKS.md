@@ -4,6 +4,48 @@ Last updated: 2026-01-16
 
 ## Recent Progress
 
+### Session 20: Plugin System Implementation (2026-01-16)
+**Issue #27 Complete!** Plugin Architecture and Management
+- [x] **Created KpPluginInterface** (src/plugins/KpPluginInterface.h ~180 lines)
+  - Qt plugin interface using Q_DECLARE_INTERFACE
+  - KpPluginInfo struct (name, version, author, description, website, icon)
+  - KpMenuItem struct for plugin menu items with flags (checkbox, disabled, submenu)
+  - KpPluginEvent namespace with 25+ event codes matching MFC KPM_* defines
+  - KpMenuFlags namespace for menu item configuration
+  - Plugin lifecycle: initialize(), shutdown(), onEvent()
+  - Menu integration: menuItems() returns QList<KpMenuItem>
+  - Optional command-line argument handling
+- [x] **Implemented PluginManager** (src/plugins/PluginManager.h/cpp ~420 lines)
+  - Singleton pattern for global plugin access
+  - Plugin discovery in plugins/ directory (DLL/dylib/so)
+  - QPluginLoader-based loading with Qt plugin validation
+  - Event broadcasting to all plugins
+  - Dynamic menu building from plugin-provided menu items
+  - Command ID range management (0x9000-0x9FFF)
+  - Plugin lifecycle management (load, initialize, shutdown, unload)
+  - Late-unload support for plugins requiring extended shutdown
+- [x] **Created PluginsDialog** (src/gui/PluginsDialog.h/cpp ~235 lines)
+  - Lists all loaded plugins with name, version, author, description
+  - Context menu for Configure and About actions
+  - Open Plugin Folder button
+  - Refresh list functionality
+  - Plugin status display with file path and website
+- [x] **MainWindow Integration**
+  - Tools > Plugins submenu with dynamic plugin menu items
+  - "Plugins..." action opens PluginsDialog
+  - Plugin initialization at startup (DelayedInit event)
+  - Plugin cleanup at shutdown (Cleanup event)
+- [x] **Testing**
+  - Build: ✅ Successful (no warnings)
+  - Tests: ✅ All 3/3 unit tests passing
+- [x] **Files Created**
+  - src/plugins/KpPluginInterface.h (180 lines)
+  - src/plugins/PluginManager.h (115 lines)
+  - src/plugins/PluginManager.cpp (420 lines)
+  - src/plugins/CMakeLists.txt
+  - src/gui/PluginsDialog.h (40 lines)
+  - src/gui/PluginsDialog.cpp (235 lines)
+
 ### Session 19: SPR Engine Implementation (2026-01-16)
 **Issue #36 Complete!** String Placeholder Replacement Engine
 - [x] **Created SprEngine Class** (src/core/SprEngine.h/cpp ~470 lines)

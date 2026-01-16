@@ -114,6 +114,7 @@ private slots:
     void onToolsRepairDatabase();
     void onToolsShowExpiredEntries();
     void onToolsShowExpiringSoon();
+    void onToolsPlugins();
 
     // Help menu
     void onHelpContents();
@@ -275,6 +276,8 @@ private:
     QAction *m_actionToolsRepairDatabase;
     QAction *m_actionToolsShowExpiredEntries;
     QAction *m_actionToolsShowExpiringSoon;
+    QAction *m_actionToolsPlugins;
+    QMenu *m_pluginMenu;
 
     // Actions - Help
     QAction *m_actionHelpContents;

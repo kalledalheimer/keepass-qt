@@ -30,6 +30,8 @@
 #include "../autotype/AutoTypeConfig.h"
 #include "../autotype/platform/AutoTypePlatform.h"
 #include "../autotype/GlobalHotkey.h"
+#include "../plugins/PluginManager.h"
+#include "PluginsDialog.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -101,6 +103,12 @@ MainWindow::MainWindow(QWidget *parent)
     setupUi();
     createSystemTrayIcon();
     setupGlobalHotkey();
+
+    // Initialize plugin system
+    PluginManager::instance().setDatabaseManager(m_pwManager);
+    PluginManager::instance().loadAllPlugins();
+    PluginManager::instance().broadcastEvent(KpPluginEvent::DelayedInit);
+
     loadSettings();
     updateWindowTitle();
     updateActions();
@@ -108,6 +116,10 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    // Shutdown plugins
+    PluginManager::instance().broadcastEvent(KpPluginEvent::Cleanup);
+    PluginManager::instance().unloadAllPlugins();
+
     saveSettings();
     delete m_pwManager;
 }
@@ -449,6 +461,10 @@ void MainWindow::createActions()
     m_actionToolsShowExpiringSoon->setEnabled(false);
     connect(m_actionToolsShowExpiringSoon, &QAction::triggered, this, &MainWindow::onToolsShowExpiringSoon);
 
+    m_actionToolsPlugins = new QAction(tr("&Plugins..."), this);
+    m_actionToolsPlugins->setStatusTip(tr("Manage KeePass plugins"));
+    connect(m_actionToolsPlugins, &QAction::triggered, this, &MainWindow::onToolsPlugins);
+
     // Help menu actions
     m_actionHelpContents = new QAction(tr("&Contents"), this);
     m_actionHelpContents->setShortcut(QKeySequence::HelpContents);
@@ -568,6 +584,13 @@ void MainWindow::createMenus()
     toolsMenu->addSeparator();
     toolsMenu->addAction(m_actionToolsShowExpiredEntries);
     toolsMenu->addAction(m_actionToolsShowExpiringSoon);
+    toolsMenu->addSeparator();
+
+    // Plugin submenu - dynamic menu items from loaded plugins
+    m_pluginMenu = toolsMenu->addMenu(tr("Pl&ugins"));
+    PluginManager::instance().buildPluginMenu(m_pluginMenu);
+    m_pluginMenu->addAction(m_actionToolsPlugins);
+
     toolsMenu->addSeparator();
     toolsMenu->addAction(m_actionToolsOptions);
 
@@ -4106,6 +4129,12 @@ void MainWindow::onToolsShowExpiringSoon()
 
     // Update status bar to show count
     m_statusLabel->setText(tr("Found %1 entries expiring within %2 days").arg(expiringIndices.count()).arg(days));
+}
+
+void MainWindow::onToolsPlugins()
+{
+    PluginsDialog dialog(this);
+    dialog.exec();
 }
 
 // Helper: Generate HTML for printing

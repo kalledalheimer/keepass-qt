@@ -39,6 +39,9 @@ add_subdirectory(src/gui)
 # Auto-type system
 add_subdirectory(src/autotype)
 
+# Plugin system
+add_subdirectory(src/plugins)
+
 # Translations
 set(TS_FILES
     translations/keepass_en.ts
@@ -69,6 +72,7 @@ target_link_libraries(keepass
         keepass-core
         keepass-gui
         keepass-autotype
+        keepass-plugins
         Qt${QT_VERSION_MAJOR}::Core
         Qt${QT_VERSION_MAJOR}::Widgets
 )

@@ -43,6 +43,8 @@ add_library(keepass-gui STATIC
     LanguagesDialog.h
     TranslationManager.cpp
     TranslationManager.h
+    PluginsDialog.cpp
+    PluginsDialog.h
 
     # Icon management
     IconManager.cpp
@@ -57,6 +59,8 @@ target_link_libraries(keepass-gui
         keepass-core
         Qt${QT_VERSION_MAJOR}::Widgets
         Qt${QT_VERSION_MAJOR}::PrintSupport
+    PRIVATE
+        keepass-plugins
 )
 
 target_include_directories(keepass-gui
