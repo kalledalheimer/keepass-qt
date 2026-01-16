@@ -51,8 +51,16 @@ private slots:
     void onFileClose();
     void onFileLockWorkspace();
     void onFileChangeMasterKey();
+    void onFileExportHtml();
+    void onFileExportXml();
+    void onFileExportTxt();
     void onFileExportCsv();
     void onFileImportCsv();
+    void onFileImportCodeWallet();
+    void onFileImportPwSafe();
+    void onFileImportKeePass();
+    void onFilePrint();
+    void onFilePrintPreview();
     void onFileExit();
 
     // Edit menu
@@ -62,6 +70,13 @@ private slots:
     void onEditDuplicateEntry();
     void onEditDeleteEntry();
     void onEditDeleteGroup();
+    void onEditMoveGroupUp();
+    void onEditMoveGroupDown();
+    void onEditMoveGroupLeft();
+    void onEditMoveGroupRight();
+    void onEditSortGroups();
+    void onEditMoveEntryUp();
+    void onEditMoveEntryDown();
     void onEditFind();
     void onEditCopyUsername();
     void onEditCopyPassword();
@@ -87,6 +102,10 @@ private slots:
     void onViewColumnUUID(bool checked);
     void onViewColumnAttachment(bool checked);
 
+    // View options - star hiding
+    void onViewHidePasswordStars(bool checked);
+    void onViewHideUsernameStars(bool checked);
+
     // Tools menu
     void onToolsOptions();
     void onToolsPasswordGenerator();
@@ -98,6 +117,7 @@ private slots:
 
     // Help menu
     void onHelpContents();
+    void onHelpLanguages();
     void onHelpAbout();
 
     // Selection changes
@@ -116,6 +136,9 @@ private slots:
     void onTrayRestore();
     void onTrayLock();
     void onTrayExit();
+
+    // Global hotkey
+    void onGlobalHotkeyTriggered();
 
 private:
     // UI setup
@@ -160,8 +183,14 @@ private:
     void showTrayIcon();
     void hideTrayIcon();
 
+    // Global hotkey
+    void setupGlobalHotkey();
+
     // URL helpers
     void openUrl(const QString& url);
+
+    // Print helpers
+    QString generateHtmlForPrint(quint32 fieldFlags);
 
     // Members
     PwManager *m_pwManager;
@@ -183,8 +212,16 @@ private:
     QAction *m_actionFileClose;
     QAction *m_actionFileLockWorkspace;
     QAction *m_actionFileChangeMasterKey;
+    QAction *m_actionFileExportHtml;
+    QAction *m_actionFileExportXml;
+    QAction *m_actionFileExportTxt;
     QAction *m_actionFileExportCsv;
     QAction *m_actionFileImportCsv;
+    QAction *m_actionFileImportCodeWallet;
+    QAction *m_actionFileImportPwSafe;
+    QAction *m_actionFileImportKeePass;
+    QAction *m_actionFilePrint;
+    QAction *m_actionFilePrintPreview;
     QAction *m_actionFileExit;
 
     // Actions - Edit
@@ -194,6 +231,13 @@ private:
     QAction *m_actionEditDuplicateEntry;
     QAction *m_actionEditDeleteEntry;
     QAction *m_actionEditDeleteGroup;
+    QAction *m_actionEditMoveGroupUp;
+    QAction *m_actionEditMoveGroupDown;
+    QAction *m_actionEditMoveGroupLeft;
+    QAction *m_actionEditMoveGroupRight;
+    QAction *m_actionEditSortGroups;
+    QAction *m_actionEditMoveEntryUp;
+    QAction *m_actionEditMoveEntryDown;
     QAction *m_actionEditFind;
     QAction *m_actionEditCopyUsername;
     QAction *m_actionEditCopyPassword;
@@ -219,6 +263,10 @@ private:
     QAction *m_actionViewColumnUUID;
     QAction *m_actionViewColumnAttachment;
 
+    // View options - star hiding
+    QAction *m_actionViewHidePasswordStars;
+    QAction *m_actionViewHideUsernameStars;
+
     // Actions - Tools
     QAction *m_actionToolsOptions;
     QAction *m_actionToolsPasswordGenerator;
@@ -230,6 +278,7 @@ private:
 
     // Actions - Help
     QAction *m_actionHelpContents;
+    QAction *m_actionHelpLanguages;
     QAction *m_actionHelpAbout;
 
     // State

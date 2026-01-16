@@ -1432,6 +1432,31 @@ quint32 PwManager::getNumberOfItemsInGroupN(quint32 idGroup) const
     return count;
 }
 
+quint32 PwManager::getEntryByGroupN(quint32 idGroup, quint32 dwIndex) const
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp CPwManager::GetEntryByGroupN (lines 639-657)
+    // Returns the absolute entry index for the Nth entry in a specific group
+
+    if (idGroup == DWORD_MAX) {
+        return DWORD_MAX;
+    }
+    if (dwIndex >= m_numEntries) {
+        return DWORD_MAX;
+    }
+
+    quint32 uEntryInGroupCounter = 0;
+    for (quint32 uCurrentEntry = 0; uCurrentEntry < m_numEntries; ++uCurrentEntry) {
+        if (m_pEntries[uCurrentEntry].uGroupId == idGroup) {
+            if (dwIndex == uEntryInGroupCounter) {
+                return uCurrentEntry;
+            }
+            ++uEntryInGroupCounter;
+        }
+    }
+
+    return DWORD_MAX;
+}
+
 PW_ENTRY* PwManager::getEntryByUuid(const quint8* pUuid)
 {
     if (!pUuid)
@@ -1930,7 +1955,92 @@ void PwManager::sortGroup(quint32 idGroup, quint32 dwSortByField)
 
 void PwManager::sortGroupList()
 {
-    // TODO: Implement
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp CPwManager::SortGroupList
+    // Sort groups alphabetically while maintaining tree hierarchy
+
+    if (m_numGroups <= 1) {
+        return;  // Nothing to sort
+    }
+
+    // Sort groups at each level independently
+    // This is a simple bubble sort that respects tree levels
+    bool swapped = true;
+    while (swapped) {
+        swapped = false;
+        for (quint32 i = 0; i < m_numGroups - 1; ++i) {
+            // Only compare groups at the same level
+            if (m_pGroups[i].usLevel == m_pGroups[i + 1].usLevel) {
+                // Compare group names (case-insensitive)
+                QString name1 = QString::fromUtf8(m_pGroups[i].pszGroupName).toLower();
+                QString name2 = QString::fromUtf8(m_pGroups[i + 1].pszGroupName).toLower();
+
+                if (name1 > name2) {
+                    // Swap groups
+                    PW_GROUP temp = m_pGroups[i];
+                    m_pGroups[i] = m_pGroups[i + 1];
+                    m_pGroups[i + 1] = temp;
+                    swapped = true;
+                }
+            }
+        }
+    }
+}
+
+bool PwManager::moveGroupExDir(quint32 dwGroupId, int iDirection)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp CPwManager::MoveGroupExDir (lines 1155-1171)
+    // Move a group up (-1) or down (+1) within its siblings at the same tree level
+
+    if (dwGroupId == 0 || dwGroupId == DWORD_MAX) {
+        return false;
+    }
+
+    // Find the group by ID
+    quint32 groupIndex = getGroupByIdN(dwGroupId);
+    if (groupIndex == DWORD_MAX) {
+        return false;  // Group not found
+    }
+
+    PW_GROUP* group = &m_pGroups[groupIndex];
+    quint16 currentLevel = group->usLevel;
+
+    // Find sibling to swap with based on direction
+    if (iDirection == -1) {
+        // Move up: find previous sibling at same level
+        for (qint32 i = static_cast<qint32>(groupIndex) - 1; i >= 0; --i) {
+            if (m_pGroups[i].usLevel < currentLevel) {
+                // Hit parent level, no more siblings above
+                return false;
+            }
+            if (m_pGroups[i].usLevel == currentLevel) {
+                // Found previous sibling - swap with it
+                PW_GROUP temp = m_pGroups[groupIndex];
+                m_pGroups[groupIndex] = m_pGroups[i];
+                m_pGroups[i] = temp;
+                return true;
+            }
+        }
+        return false;  // No previous sibling found
+    }
+    else if (iDirection == 1) {
+        // Move down: find next sibling at same level
+        for (quint32 i = groupIndex + 1; i < m_numGroups; ++i) {
+            if (m_pGroups[i].usLevel < currentLevel) {
+                // Hit parent level or end, no more siblings below
+                return false;
+            }
+            if (m_pGroups[i].usLevel == currentLevel) {
+                // Found next sibling - swap with it
+                PW_GROUP temp = m_pGroups[groupIndex];
+                m_pGroups[groupIndex] = m_pGroups[i];
+                m_pGroups[i] = temp;
+                return true;
+            }
+        }
+        return false;  // No next sibling found
+    }
+
+    return false;  // Invalid direction
 }
 
 void PwManager::fixGroupTree()
@@ -1954,6 +2064,65 @@ void PwManager::fixGroupTree()
         }
 
         usLastLevel = m_pGroups[i].usLevel;
+    }
+}
+
+void PwManager::moveEntry(quint32 idGroup, quint32 dwFrom, quint32 dwTo)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp CPwManager::MoveEntry (lines 1173-1185)
+    // Moves an entry from one position to another within the same group
+
+    if ((dwFrom >= m_numEntries) || (dwFrom == DWORD_MAX)) {
+        return;
+    }
+    if ((dwTo >= m_numEntries) || (dwTo == DWORD_MAX)) {
+        return;
+    }
+    if (dwFrom == dwTo) {
+        return;
+    }
+
+    // Convert relative indices (within group) to absolute indices (across all entries)
+    const quint32 dwFromEx = getEntryByGroupN(idGroup, dwFrom);
+    const quint32 dwToEx = getEntryByGroupN(idGroup, dwTo);
+
+    if ((dwFromEx == DWORD_MAX) || (dwToEx == DWORD_MAX)) {
+        return;
+    }
+
+    moveInternal(dwFromEx, dwToEx);
+}
+
+void PwManager::moveInternal(quint32 dwFrom, quint32 dwTo)
+{
+    // Reference: MFC/MFC-KeePass/KeePassLibCpp/PwManager.cpp CPwManager::MoveInternal (lines 1073-1093)
+    // Bubbles an entry from position dwFrom to position dwTo by swapping with neighbors
+
+    if (dwFrom == dwTo) {
+        return;  // Nothing to do
+    }
+    if (dwFrom >= m_numEntries) {
+        return;  // Invalid index
+    }
+    if (dwTo >= m_numEntries) {
+        return;  // Invalid index
+    }
+
+    // Set moving direction
+    const qint32 lDir = ((dwFrom < dwTo) ? 1 : -1);
+
+    qint32 i = static_cast<qint32>(dwFrom);
+    while (true) {
+        if (i == static_cast<qint32>(dwTo)) {
+            break;
+        }
+
+        // Swap current entry with next entry in direction
+        PW_ENTRY pe = m_pEntries[i];
+        m_pEntries[i] = m_pEntries[i + lDir];
+        m_pEntries[i + lDir] = pe;
+
+        i += lDir;
     }
 }
 

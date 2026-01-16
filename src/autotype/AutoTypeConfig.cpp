@@ -111,3 +111,72 @@ bool AutoTypeConfig::hasAutoTypeConfig(const QString& notes)
     return notes.contains(AUTO_TYPE_PREFIX) ||
            notes.contains(AUTO_TYPE_WINDOW_PREFIX);
 }
+
+QString AutoTypeConfig::normalizeWindowTitle(const QString& title, bool normalizeDashes)
+{
+    // Reference: MFC PwSafeDlg.cpp:10126-10136 (_AutoTypeNormalizeWindowText)
+    if (title.isEmpty()) {
+        return {};
+    }
+
+    QString normalized = title.toLower();
+
+    if (normalizeDashes) {
+        normalized = AutoTypeConfig::normalizeDashes(normalized);
+    }
+
+    return normalized;
+}
+
+QString AutoTypeConfig::normalizeDashes(const QString& text)
+{
+    // Reference: MFC StrUtil.cpp:992-1048 (SU_NormalizeDashes, SU_GetNormDashes)
+    // Replaces various Unicode dash characters with standard hyphen-minus (U+002D)
+
+    if (text.isEmpty()) {
+        return {};
+    }
+
+    QString result = text;
+
+    // List of Unicode dash characters to normalize (from MFC SU_GetNormDashes)
+    // All of these are replaced with standard hyphen '-' (U+002D)
+    static const QList<QChar> dashChars = {
+        QChar(0x2010),  // Hyphen
+        QChar(0x2011),  // Non-breaking hyphen
+        QChar(0x2012),  // Figure dash
+        QChar(0x2013),  // En dash
+        QChar(0x2014),  // Em dash
+        QChar(0x2015),  // Horizontal bar
+        QChar(0x2212)   // Minus sign
+    };
+
+    // Replace all dash variants with standard hyphen
+    for (const QChar& dashChar : dashChars) {
+        result.replace(dashChar, '-');
+    }
+
+    return result;
+}
+
+QString AutoTypeConfig::applyIEFix(const QString& sequence, const QString& windowTitle,
+                                     bool iefixEnabled)
+{
+    // Reference: MFC PwSafeDlg.cpp:10033-10038
+    // If IE fix is enabled and window title contains IE or Maxthon,
+    // prepend {DELAY 50}1{DELAY 50}{BACKSPACE} to work around auto-complete issues
+
+    if (!iefixEnabled || windowTitle.isEmpty()) {
+        return sequence;
+    }
+
+    // Check if window title contains Internet Explorer or Maxthon (case-insensitive)
+    QString lowerTitle = windowTitle.toLower();
+    if (lowerTitle.contains(QStringLiteral("internet explorer")) ||
+        lowerTitle.contains(QStringLiteral("maxthon"))) {
+        // Prepend IE fix sequence
+        return QStringLiteral("{DELAY 50}1{DELAY 50}{BACKSPACE}") + sequence;
+    }
+
+    return sequence;
+}

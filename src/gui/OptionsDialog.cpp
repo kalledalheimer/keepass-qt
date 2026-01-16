@@ -337,6 +337,8 @@ void OptionsDialog::createAutoTypeTab()
            "into login forms. Configure the global auto-type behavior below."),
         autoTypeGroup));
 
+    autoTypeLayout->addSpacing(5);
+
     // Enable/Disable Auto-Type
     m_checkAutoTypeEnabled = new QCheckBox(
         tr("Enable Auto-Type functionality"), autoTypeGroup);
@@ -355,6 +357,23 @@ void OptionsDialog::createAutoTypeTab()
     m_editDefaultAutoTypeSequence->setText(QStringLiteral("{USERNAME}{TAB}{PASSWORD}{ENTER}"));
     autoTypeLayout->addWidget(m_editDefaultAutoTypeSequence);
 
+    autoTypeLayout->addSpacing(10);
+
+    // Global hotkey configuration
+    autoTypeLayout->addWidget(new QLabel(
+        tr("Global Auto-Type Hotkey:"), autoTypeGroup));
+
+    QHBoxLayout* hotkeyLayout = new QHBoxLayout();
+    m_hotkeyEdit = new QKeySequenceEdit(autoTypeGroup);
+    m_hotkeyEdit->setKeySequence(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_A));
+    m_hotkeyEdit->setToolTip(
+        tr("Press the desired key combination to set the global hotkey.\n"
+           "This hotkey will trigger Auto-Type from any application.\n"
+           "Note: Requires Accessibility permissions on macOS."));
+    hotkeyLayout->addWidget(m_hotkeyEdit);
+    hotkeyLayout->addStretch();
+    autoTypeLayout->addLayout(hotkeyLayout);
+
     autoTypeLayout->addWidget(new QLabel(
         tr("Available placeholders:\n"
            "  {USERNAME}, {PASSWORD}, {TITLE}, {URL}, {NOTES}\n"
@@ -364,6 +383,56 @@ void OptionsDialog::createAutoTypeTab()
         autoTypeGroup));
 
     layout->addWidget(autoTypeGroup);
+
+    // Advanced settings group
+    QGroupBox* advancedGroup = new QGroupBox(tr("Advanced Options"), autoTypeTab);
+    QVBoxLayout* advancedLayout = new QVBoxLayout(advancedGroup);
+
+    // Minimize before auto-type
+    m_checkAutoTypeMinimizeBeforeType = new QCheckBox(
+        tr("Use alternative method (minimize KeePass window)"), advancedGroup);
+    m_checkAutoTypeMinimizeBeforeType->setToolTip(
+        tr("When enabled, KeePass minimizes before auto-typing.\n"
+           "When disabled, KeePass just drops to the background."));
+    m_checkAutoTypeMinimizeBeforeType->setChecked(true);
+    advancedLayout->addWidget(m_checkAutoTypeMinimizeBeforeType);
+
+    // Same keyboard layout
+    m_checkAutoTypeSameKeyboardLayout = new QCheckBox(
+        tr("Use same keyboard layout as KeePass window"), advancedGroup);
+    m_checkAutoTypeSameKeyboardLayout->setToolTip(
+        tr("Ensures auto-type uses the same keyboard layout that KeePass is using.\n"
+           "Helps prevent issues with different keyboard layouts."));
+    m_checkAutoTypeSameKeyboardLayout->setChecked(true);
+    advancedLayout->addWidget(m_checkAutoTypeSameKeyboardLayout);
+
+    // Sort selection items
+    m_checkAutoTypeSortSelection = new QCheckBox(
+        tr("Sort entries in auto-type selection dialog"), advancedGroup);
+    m_checkAutoTypeSortSelection->setToolTip(
+        tr("When multiple entries match, sort them by title in the selection dialog."));
+    m_checkAutoTypeSortSelection->setChecked(true);
+    advancedLayout->addWidget(m_checkAutoTypeSortSelection);
+
+    // Normalize dashes
+    m_checkAutoTypeNormalizeDashes = new QCheckBox(
+        tr("Normalize dashes in window titles"), advancedGroup);
+    m_checkAutoTypeNormalizeDashes->setToolTip(
+        tr("Converts different types of dashes (em-dash, en-dash, minus, etc.)\n"
+           "to a standard form for better window title matching."));
+    m_checkAutoTypeNormalizeDashes->setChecked(true);
+    advancedLayout->addWidget(m_checkAutoTypeNormalizeDashes);
+
+    // Internet Explorer fix
+    m_checkAutoTypeIEFix = new QCheckBox(
+        tr("Internet Explorer compatibility mode"), advancedGroup);
+    m_checkAutoTypeIEFix->setToolTip(
+        tr("Adds a prefix to work around Internet Explorer auto-complete issues.\n"
+           "Only enable if you experience problems with IE or similar browsers."));
+    m_checkAutoTypeIEFix->setChecked(false);
+    advancedLayout->addWidget(m_checkAutoTypeIEFix);
+
+    layout->addWidget(advancedGroup);
 
     layout->addStretch();
     m_tabWidget->addTab(autoTypeTab, tr("Auto-Type"));
@@ -620,6 +689,12 @@ void OptionsDialog::accept()
     // Auto-Type
     m_autoTypeEnabled = m_checkAutoTypeEnabled->isChecked();
     m_defaultAutoTypeSequence = m_editDefaultAutoTypeSequence->text();
+    m_autoTypeGlobalHotkey = m_hotkeyEdit->keySequence();
+    m_autoTypeMinimizeBeforeType = m_checkAutoTypeMinimizeBeforeType->isChecked();
+    m_autoTypeSameKeyboardLayout = m_checkAutoTypeSameKeyboardLayout->isChecked();
+    m_autoTypeSortSelection = m_checkAutoTypeSortSelection->isChecked();
+    m_autoTypeNormalizeDashes = m_checkAutoTypeNormalizeDashes->isChecked();
+    m_autoTypeIEFix = m_checkAutoTypeIEFix->isChecked();
 
     // Setup
     m_usePuttyForURLs = m_checkUsePuttyForURLs->isChecked();
@@ -714,6 +789,19 @@ void OptionsDialog::loadSettings()
     // Auto-Type settings
     setAutoTypeEnabled(settings.getAutoTypeEnabled());
     setDefaultAutoTypeSequence(settings.getDefaultAutoTypeSequence());
+    // Load global hotkey - convert from quint32 to QKeySequence
+    quint32 hotkeyValue = settings.getAutoTypeGlobalHotKey();
+    if (hotkeyValue != 0) {
+        setAutoTypeGlobalHotkey(QKeySequence(static_cast<int>(hotkeyValue)));
+    } else {
+        // Default hotkey: Ctrl+Alt+A
+        setAutoTypeGlobalHotkey(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_A));
+    }
+    setAutoTypeMinimizeBeforeType(settings.getAutoTypeMinimizeBeforeType());
+    setAutoTypeSameKeyboardLayout(settings.getAutoTypeSameKeyboardLayout());
+    setAutoTypeSortSelection(settings.getAutoTypeSortSelectionItems());
+    setAutoTypeNormalizeDashes(settings.getAutoTypeNormalizeDashes());
+    setAutoTypeIEFix(settings.getAutoTypeInternetExplorerFix());
 
     // Setup settings
     setUsePuttyForURLs(settings.get("Setup/UsePuttyForURLs", false).toBool());
@@ -788,6 +876,21 @@ void OptionsDialog::saveSettings()
     // Auto-Type settings
     settings.setAutoTypeEnabled(m_autoTypeEnabled);
     settings.setDefaultAutoTypeSequence(m_defaultAutoTypeSequence);
+    // Save global hotkey - convert QKeySequence to quint32
+    if (!m_autoTypeGlobalHotkey.isEmpty()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        settings.setAutoTypeGlobalHotKey(static_cast<quint32>(m_autoTypeGlobalHotkey[0].toCombined()));
+#else
+        settings.setAutoTypeGlobalHotKey(static_cast<quint32>(m_autoTypeGlobalHotkey[0]));
+#endif
+    } else {
+        settings.setAutoTypeGlobalHotKey(0);
+    }
+    settings.setAutoTypeMinimizeBeforeType(m_autoTypeMinimizeBeforeType);
+    settings.setAutoTypeSameKeyboardLayout(m_autoTypeSameKeyboardLayout);
+    settings.setAutoTypeSortSelectionItems(m_autoTypeSortSelection);
+    settings.setAutoTypeNormalizeDashes(m_autoTypeNormalizeDashes);
+    settings.setAutoTypeInternetExplorerFix(m_autoTypeIEFix);
 
     // Setup settings
     settings.set("Setup/UsePuttyForURLs", m_usePuttyForURLs);
@@ -1242,4 +1345,45 @@ void OptionsDialog::setDefaultAutoTypeSequence(const QString& sequence)
 {
     m_defaultAutoTypeSequence = sequence;
     m_editDefaultAutoTypeSequence->setText(sequence);
+}
+
+QKeySequence OptionsDialog::autoTypeGlobalHotkey() const
+{
+    return m_autoTypeGlobalHotkey;
+}
+
+void OptionsDialog::setAutoTypeGlobalHotkey(const QKeySequence& hotkey)
+{
+    m_autoTypeGlobalHotkey = hotkey;
+    m_hotkeyEdit->setKeySequence(hotkey);
+}
+
+void OptionsDialog::setAutoTypeMinimizeBeforeType(bool minimize)
+{
+    m_autoTypeMinimizeBeforeType = minimize;
+    m_checkAutoTypeMinimizeBeforeType->setChecked(minimize);
+}
+
+void OptionsDialog::setAutoTypeSameKeyboardLayout(bool same)
+{
+    m_autoTypeSameKeyboardLayout = same;
+    m_checkAutoTypeSameKeyboardLayout->setChecked(same);
+}
+
+void OptionsDialog::setAutoTypeSortSelection(bool sort)
+{
+    m_autoTypeSortSelection = sort;
+    m_checkAutoTypeSortSelection->setChecked(sort);
+}
+
+void OptionsDialog::setAutoTypeNormalizeDashes(bool normalize)
+{
+    m_autoTypeNormalizeDashes = normalize;
+    m_checkAutoTypeNormalizeDashes->setChecked(normalize);
+}
+
+void OptionsDialog::setAutoTypeIEFix(bool fix)
+{
+    m_autoTypeIEFix = fix;
+    m_checkAutoTypeIEFix->setChecked(fix);
 }

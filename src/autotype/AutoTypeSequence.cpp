@@ -6,6 +6,7 @@
 
 #include "AutoTypeSequence.h"
 #include "../core/PwManager.h"
+#include "../core/SprEngine.h"
 #include <QRegularExpression>
 
 AutoTypeSequence::AutoTypeSequence()
@@ -24,7 +25,15 @@ QList<AutoTypeAction> AutoTypeSequence::compile(const QString& sequence,
         return actions;
     }
 
-    QString remaining = sequence;
+    // Use SprEngine to resolve data placeholders first
+    // SprEngine handles: {USERNAME}, {PASSWORD}, {TITLE}, {URL}, {NOTES},
+    //                    {DT_*}, {REF:*}, {CLEARFIELD}, {APPDIR}, etc.
+    // Unrecognized placeholders (like {TAB}, {ENTER}) are preserved as-is
+    SprEngine sprEngine;
+    SprContentFlags sprFlags;
+    sprFlags.escapeForAutoType = true;  // Escape special auto-type characters in field values
+
+    QString remaining = sprEngine.compile(sequence, entry, pwManager, sprFlags);
     int pos = 0;
 
     while (pos < remaining.length()) {
@@ -70,61 +79,14 @@ QList<AutoTypeAction> AutoTypeSequence::compile(const QString& sequence,
 
 bool AutoTypeSequence::parsePlaceholder(const QString& placeholder,
                                          QList<AutoTypeAction>& actions,
-                                         PW_ENTRY* entry,
-                                         PwManager* pwManager)
+                                         PW_ENTRY* /* entry */,
+                                         PwManager* /* pwManager */)
 {
+    // Note: Entry field placeholders (USERNAME, PASSWORD, TITLE, URL, NOTES)
+    // are now handled by SprEngine before this method is called.
+    // This method only handles keyboard/action placeholders.
+
     QString name = placeholder.trimmed().toUpper();
-
-    // Entry field placeholders
-    if (name == "USERNAME" || name == "USER") {
-        if (entry->pszUserName && entry->pszUserName[0] != '\0') {
-            actions.append(AutoTypeAction::makeText(QString::fromUtf8(entry->pszUserName)));
-        }
-        return true;
-    }
-
-    if (name == "PASSWORD" || name == "PASS" || name == "PWD") {
-        if (entry->pszPassword && pwManager) {
-            // Unlock password to access it
-            pwManager->unlockEntryPassword(entry);
-            QString password = QString::fromUtf8(entry->pszPassword);
-            pwManager->lockEntryPassword(entry);
-
-            if (!password.isEmpty()) {
-                actions.append(AutoTypeAction::makeText(password));
-            }
-        }
-        return true;
-    }
-
-    if (name == "TITLE") {
-        if (entry->pszTitle && entry->pszTitle[0] != '\0') {
-            actions.append(AutoTypeAction::makeText(QString::fromUtf8(entry->pszTitle)));
-        }
-        return true;
-    }
-
-    if (name == "URL") {
-        if (entry->pszURL && entry->pszURL[0] != '\0') {
-            actions.append(AutoTypeAction::makeText(QString::fromUtf8(entry->pszURL)));
-        }
-        return true;
-    }
-
-    if (name == "NOTES") {
-        if (entry->pszAdditional && entry->pszAdditional[0] != '\0') {
-            QString notes = QString::fromUtf8(entry->pszAdditional);
-            // Only use first line
-            int newlinePos = notes.indexOf('\n');
-            if (newlinePos != -1) {
-                notes = notes.left(newlinePos);
-            }
-            if (!notes.isEmpty()) {
-                actions.append(AutoTypeAction::makeText(notes));
-            }
-        }
-        return true;
-    }
 
     // Special key placeholders
     AutoTypeKey key = keyForPlaceholder(name);
@@ -133,21 +95,43 @@ bool AutoTypeSequence::parsePlaceholder(const QString& placeholder,
         return true;
     }
 
-    // Delay placeholder
-    if (name.startsWith("DELAY ")) {
-        QString delayStr = name.mid(6).trimmed();
+    // Delay placeholder: {DELAY X} or {DELAY=X}
+    if (name.startsWith("DELAY ") || name.startsWith("DELAY=")) {
+        int offset = name.startsWith("DELAY=") ? 6 : 6;
+        QString delayStr = name.mid(offset).trimmed();
         bool ok;
         int delayMs = delayStr.toInt(&ok);
         if (ok && delayMs >= 0) {
             actions.append(AutoTypeAction::makeDelay(delayMs));
             return true;
-        } else {
-            m_lastError = QString("Invalid delay value: %1").arg(delayStr);
-            return false;
         }
+        m_lastError = QString("Invalid delay value: %1").arg(delayStr);
+        return false;
     }
 
-    // Unknown placeholder - could warn but we'll skip it for compatibility
+    // Modifier keys with content: +{...} (Shift), ^{...} (Ctrl), %{...} (Alt)
+    // These should have been handled by the caller, but if we get here
+    // with a + or similar, treat as literal text
+    if (name == "PLUS") {
+        actions.append(AutoTypeAction::makeText("+"));
+        return true;
+    }
+    if (name == "CARET") {
+        actions.append(AutoTypeAction::makeText("^"));
+        return true;
+    }
+    if (name == "PERCENT") {
+        actions.append(AutoTypeAction::makeText("%"));
+        return true;
+    }
+    if (name == "TILDE") {
+        actions.append(AutoTypeAction::makeText("~"));
+        return true;
+    }
+
+    // Unknown placeholder after SprEngine processing
+    // This shouldn't happen normally - SprEngine keeps unrecognized placeholders
+    // and we handle all known keyboard placeholders above
     m_lastError = QString("Unknown placeholder: {%1}").arg(placeholder);
     return false;
 }

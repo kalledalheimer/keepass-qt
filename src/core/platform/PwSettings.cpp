@@ -192,6 +192,101 @@ void PwSettings::setAutoTypeEnabled(bool enabled)
     m_settings.setValue(KEY_AUTO_TYPE_ENABLED, enabled);
 }
 
+// Advanced Auto-Type Settings
+
+bool PwSettings::getAutoTypeMinimizeBeforeType() const
+{
+    // Default: true (minimize method, matching MFC default)
+    return m_settings.value(KEY_AUTO_TYPE_MINIMIZE_BEFORE, true).toBool();
+}
+
+void PwSettings::setAutoTypeMinimizeBeforeType(bool minimize)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_MINIMIZE_BEFORE, minimize);
+}
+
+quint32 PwSettings::getAutoTypeGlobalHotKey() const
+{
+    // Default: 0 (no hotkey set)
+    // Format: lower 16 bits = key code, upper 16 bits = modifiers
+    return m_settings.value(KEY_AUTO_TYPE_GLOBAL_HOTKEY, 0).toUInt();
+}
+
+void PwSettings::setAutoTypeGlobalHotKey(quint32 hotKey)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_GLOBAL_HOTKEY, hotKey);
+}
+
+bool PwSettings::getAutoTypeSameKeyboardLayout() const
+{
+    // Default: true (enforce same keyboard layout)
+    return m_settings.value(KEY_AUTO_TYPE_SAME_KEYBOARD_LAYOUT, true).toBool();
+}
+
+void PwSettings::setAutoTypeSameKeyboardLayout(bool same)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_SAME_KEYBOARD_LAYOUT, same);
+}
+
+bool PwSettings::getAutoTypeSortSelectionItems() const
+{
+    // Default: true (sort entries in selection dialog)
+    return m_settings.value(KEY_AUTO_TYPE_SORT_SELECTION, true).toBool();
+}
+
+void PwSettings::setAutoTypeSortSelectionItems(bool sort)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_SORT_SELECTION, sort);
+}
+
+bool PwSettings::getAutoTypeNormalizeDashes() const
+{
+    // Default: true (normalize different dash types)
+    return m_settings.value(KEY_AUTO_TYPE_NORMALIZE_DASHES, true).toBool();
+}
+
+void PwSettings::setAutoTypeNormalizeDashes(bool normalize)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_NORMALIZE_DASHES, normalize);
+}
+
+bool PwSettings::getAutoTypeInternetExplorerFix() const
+{
+    // Default: false (IE fix not needed for most applications)
+    return m_settings.value(KEY_AUTO_TYPE_IE_FIX, false).toBool();
+}
+
+void PwSettings::setAutoTypeInternetExplorerFix(bool fix)
+{
+    m_settings.setValue(KEY_AUTO_TYPE_IE_FIX, fix);
+}
+
+// View Options settings
+
+bool PwSettings::getHidePasswordStars() const
+{
+    // Default: true (hide passwords with stars)
+    // Reference: MFC PWMKEY_HIDESTARS, default TRUE
+    return m_settings.value(KEY_HIDE_PASSWORD_STARS, true).toBool();
+}
+
+void PwSettings::setHidePasswordStars(bool hide)
+{
+    m_settings.setValue(KEY_HIDE_PASSWORD_STARS, hide);
+}
+
+bool PwSettings::getHideUsernameStars() const
+{
+    // Default: false (show usernames)
+    // Reference: MFC PWMKEY_HIDEUSERS, default FALSE
+    return m_settings.value(KEY_HIDE_USERNAME_STARS, false).toBool();
+}
+
+void PwSettings::setHideUsernameStars(bool hide)
+{
+    m_settings.setValue(KEY_HIDE_USERNAME_STARS, hide);
+}
+
 // Generic access
 
 QVariant PwSettings::get(const QString& key, const QVariant& defaultValue) const

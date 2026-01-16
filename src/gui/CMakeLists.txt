@@ -33,6 +33,16 @@ add_library(keepass-gui STATIC
     CsvExportDialog.h
     CsvImportDialog.cpp
     CsvImportDialog.h
+    ExportOptionsDialog.cpp
+    ExportOptionsDialog.h
+    AutoTypeSelectionDialog.cpp
+    AutoTypeSelectionDialog.h
+    IconPickerDialog.cpp
+    IconPickerDialog.h
+    LanguagesDialog.cpp
+    LanguagesDialog.h
+    TranslationManager.cpp
+    TranslationManager.h
 
     # Icon management
     IconManager.cpp
@@ -46,6 +56,7 @@ target_link_libraries(keepass-gui
     PUBLIC
         keepass-core
         Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::PrintSupport
 )
 
 target_include_directories(keepass-gui

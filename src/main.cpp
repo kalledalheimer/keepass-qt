@@ -12,6 +12,8 @@
 #include <QApplication>
 #include "gui/MainWindow.h"
 #include "core/PwManager.h"
+#include "gui/TranslationManager.h"
+#include "core/platform/PwSettings.h"
 
 int main(int argc, char *argv[])
 {
@@ -23,6 +25,18 @@ int main(int argc, char *argv[])
     app.setApplicationVersion(PWM_VERSION_STR);
     app.setOrganizationName("KeePass");
     app.setOrganizationDomain("keepass.info");
+
+    // Initialize translation system
+    TranslationManager &tm = TranslationManager::instance();
+    tm.initialize(&app);
+
+    // Load saved language preference or use system default
+    QString savedLanguage = PwSettings::instance().get("Language", "").toString();
+    if (!savedLanguage.isEmpty() && tm.isLanguageAvailable(savedLanguage)) {
+        tm.setLanguage(savedLanguage);
+    } else {
+        tm.setSystemLanguage();
+    }
 
     // Create and show main window
     MainWindow mainWindow;

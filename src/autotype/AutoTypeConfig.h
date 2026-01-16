@@ -34,6 +34,19 @@ public:
     // Check if notes contain auto-type configuration
     static bool hasAutoTypeConfig(const QString& notes);
 
+    // Window title normalization (for matching)
+    // Reference: MFC StrUtil.cpp SU_NormalizeDashes, PwSafeDlg.cpp _AutoTypeNormalizeWindowText
+    static QString normalizeWindowTitle(const QString& title, bool normalizeDashes = true);
+
+    // Normalize various Unicode dash characters to standard hyphen (U+002D)
+    // Replaces: U+2010-2015, U+2212 with '-'
+    static QString normalizeDashes(const QString& text);
+
+    // Apply Internet Explorer fix to auto-type sequence
+    // Prepends {DELAY 50}1{DELAY 50}{BACKSPACE} if window title contains IE/Maxthon
+    // Reference: MFC PwSafeDlg.cpp:10033-10038
+    static QString applyIEFix(const QString& sequence, const QString& windowTitle, bool iefixEnabled);
+
     // Constants for note prefixes
     static const QString AUTO_TYPE_PREFIX;
     static const QString AUTO_TYPE_WINDOW_PREFIX;

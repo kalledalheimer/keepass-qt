@@ -40,9 +40,19 @@ add_library(keepass-core STATIC
     util/CsvUtil.cpp
     util/CsvUtil.h
 
+    # Import/Export
+    io/PwExport.cpp
+    io/PwExport.h
+    io/PwImport.cpp
+    io/PwImport.h
+
     # Password Generator
     PasswordGenerator.cpp
     PasswordGenerator.h
+
+    # SPR Engine (String Placeholder Replacement)
+    SprEngine.cpp
+    SprEngine.h
 
     # Constants
     PwConstants.h
@@ -51,6 +61,7 @@ add_library(keepass-core STATIC
     platform/PwSettings.cpp
     platform/PwSettings.h
     platform/MemoryProtection.h
+
 )
 
 target_link_libraries(keepass-core

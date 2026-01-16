@@ -79,6 +79,32 @@ public:
     [[nodiscard]] bool getAutoTypeEnabled() const;
     void setAutoTypeEnabled(bool enabled);
 
+    // Advanced Auto-Type settings
+    [[nodiscard]] bool getAutoTypeMinimizeBeforeType() const;  // Minimize vs drop-back
+    void setAutoTypeMinimizeBeforeType(bool minimize);
+
+    [[nodiscard]] quint32 getAutoTypeGlobalHotKey() const;  // Global hotkey (Qt::Key + modifiers)
+    void setAutoTypeGlobalHotKey(quint32 hotKey);
+
+    [[nodiscard]] bool getAutoTypeSameKeyboardLayout() const;  // Enforce same keyboard layout
+    void setAutoTypeSameKeyboardLayout(bool same);
+
+    [[nodiscard]] bool getAutoTypeSortSelectionItems() const;  // Sort entries in selection dialog
+    void setAutoTypeSortSelectionItems(bool sort);
+
+    [[nodiscard]] bool getAutoTypeNormalizeDashes() const;  // Normalize dashes in window titles
+    void setAutoTypeNormalizeDashes(bool normalize);
+
+    [[nodiscard]] bool getAutoTypeInternetExplorerFix() const;  // IE fix (add delay prefix)
+    void setAutoTypeInternetExplorerFix(bool fix);
+
+    // View Options settings
+    [[nodiscard]] bool getHidePasswordStars() const;  // Hide passwords with stars (default: true)
+    void setHidePasswordStars(bool hide);
+
+    [[nodiscard]] bool getHideUsernameStars() const;  // Hide usernames with stars (default: false)
+    void setHideUsernameStars(bool hide);
+
     // Generic access (for future settings)
     [[nodiscard]] QVariant get(const QString& key, const QVariant& defaultValue = QVariant()) const;
     void set(const QString& key, const QVariant& value);
@@ -108,6 +134,14 @@ private:
     static constexpr const char* KEY_TAN_CHARS = "TAN/AcceptableChars";
     static constexpr const char* KEY_AUTO_TYPE_DEFAULT_SEQUENCE = "AutoType/DefaultSequence";
     static constexpr const char* KEY_AUTO_TYPE_ENABLED = "AutoType/Enabled";
+    static constexpr const char* KEY_AUTO_TYPE_MINIMIZE_BEFORE = "AutoType/MinimizeBeforeType";
+    static constexpr const char* KEY_AUTO_TYPE_GLOBAL_HOTKEY = "AutoType/GlobalHotKey";
+    static constexpr const char* KEY_AUTO_TYPE_SAME_KEYBOARD_LAYOUT = "AutoType/SameKeyboardLayout";
+    static constexpr const char* KEY_AUTO_TYPE_SORT_SELECTION = "AutoType/SortSelection";
+    static constexpr const char* KEY_AUTO_TYPE_NORMALIZE_DASHES = "AutoType/NormalizeDashes";
+    static constexpr const char* KEY_AUTO_TYPE_IE_FIX = "AutoType/InternetExplorerFix";
+    static constexpr const char* KEY_HIDE_PASSWORD_STARS = "View/HidePasswordStars";
+    static constexpr const char* KEY_HIDE_USERNAME_STARS = "View/HideUsernameStars";
 };
 
 #endif // PWSETTINGS_H

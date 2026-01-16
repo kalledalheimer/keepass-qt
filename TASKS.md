@@ -4,6 +4,43 @@ Last updated: 2026-01-16
 
 ## Recent Progress
 
+### Session 19: SPR Engine Implementation (2026-01-16)
+**Issue #36 Complete!** String Placeholder Replacement Engine
+- [x] **Created SprEngine Class** (src/core/SprEngine.h/cpp ~470 lines)
+  - Entry field placeholders: {USERNAME}, {PASSWORD}, {TITLE}, {URL}, {NOTES}
+  - DateTime placeholders: {DT_SIMPLE}, {DT_YEAR}, {DT_MONTH}, {DT_DAY}, {DT_HOUR}, {DT_MINUTE}, {DT_SECOND}
+  - UTC variants: {DT_UTC_SIMPLE}, {DT_UTC_YEAR}, etc.
+  - Special placeholders: {CLEARFIELD}, {APPDIR}
+  - Password placeholder aliases: {PASS}, {PWD}, {PASSWORD_ENC}
+  - Username placeholder alias: {USER}
+- [x] **Implemented Field References** ({REF:X@T:Y} syntax)
+  - Target field codes: T=Title, U=Username, A=URL, P=Password, N=Notes, I=UUID
+  - Search type codes: T=Title, U=Username, A=URL, P=Password, N=Notes, I=UUID
+  - Example: {REF:P@T:MyEntry} - Gets password from entry titled "MyEntry"
+  - Cross-entry field reference support
+- [x] **Circular Reference Protection**
+  - MaxRecursionDepth = 12 (matches MFC implementation)
+  - Reference caching with QMap<QString, QString>
+  - Prevents infinite loops in self-referencing entries
+  - Cache key normalization (uppercase)
+- [x] **Content Transformation**
+  - escapeForAutoType: Encodes +, ^, %, ~ as {PLUS}, {CARET}, {PERCENT}, {TILDE}
+  - escapeForCommandLine: Quotes strings with spaces/special chars
+  - removeMetadata: Strips Auto-Type: metadata from notes
+- [x] **Integrated with AutoTypeSequence**
+  - SprEngine pre-processes sequence to resolve data placeholders
+  - AutoTypeSequence then handles keyboard placeholders ({TAB}, {ENTER}, etc.)
+  - Clean two-stage processing pipeline
+  - Unrecognized placeholders preserved for keyboard processing
+- [x] **Testing**
+  - Build: ✅ Successful
+  - Tests: ✅ All 3/3 unit tests passing
+- [x] **Files Created/Modified**
+  - src/core/SprEngine.h (121 lines) - Interface definition
+  - src/core/SprEngine.cpp (547 lines) - Full implementation
+  - src/core/CMakeLists.txt (+3 lines)
+  - src/autotype/AutoTypeSequence.cpp (updated to use SprEngine)
+
 ### Session 18: Global Hotkey Implementation (2026-01-16)
 **Issue #35 Complete!** Global Hotkey Registration for Auto-Type
 - [x] **Created GlobalHotkey Interface Class**
@@ -318,6 +355,10 @@ Last updated: 2026-01-16
   - [x] Entry selection dialog for multiple matches
   - [x] PwSettings integration for all advanced options
   - [x] **Global hotkey support (macOS)** (#35) - **COMPLETE** ✅
+  - [x] **SPR Engine (String Placeholder Replacement)** (#36) - **COMPLETE** ✅
+    - Field references: {REF:X@T:Y}
+    - DateTime placeholders: {DT_*}
+    - Circular reference protection
   - [ ] Two-channel auto-type obfuscation (future enhancement)
 
 **Goal:** Implement KeePass signature feature
@@ -450,12 +491,12 @@ Features intentionally postponed with clear rationale. To be revisited when infr
   - **Status**: Deferred to future enhancement
   - **Reference**: MFC backup entry functions in PwManager.cpp
 
-- [ ] **Field References**
-  - Reference fields from other entries (e.g., use another entry's password)
-  - Dynamic field resolution
-  - **Rationale**: Advanced feature rarely used; requires reference resolution engine
-  - **Status**: Deferred to Phase 9 (advanced features)
-  - **Reference**: MFC `SprEngine` (String placeholder resolution)
+- [x] **Field References** - **COMPLETE** ✅ (Session 19)
+  - Reference fields from other entries via {REF:X@T:Y} syntax
+  - Dynamic field resolution with SprEngine
+  - Example: {REF:P@T:MyEntry} gets password from entry titled "MyEntry"
+  - Circular reference protection (max depth 12, caching)
+  - **Status**: Implemented in src/core/SprEngine.h/cpp (Issue #36)
 
 - [ ] **Entry Templates**
   - Define entry templates with pre-filled fields

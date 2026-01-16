@@ -85,13 +85,27 @@ QVariant EntryModel::data(const QModelIndex &index, int role) const
         case ColumnTitle:
             return QString::fromUtf8(entry->pszTitle);
         case ColumnUsername:
+            // Check if usernames should be hidden
+            // Reference: MFC m_bUserStars (PWMKEY_HIDEUSERS)
+            if (PwSettings::instance().getHideUsernameStars()) {
+                if (entry->pszUserName && *entry->pszUserName != '\0') {
+                    return QStringLiteral("***");
+                }
+            }
             return QString::fromUtf8(entry->pszUserName);
         case ColumnURL:
             return QString::fromUtf8(entry->pszURL);
         case ColumnPassword:
-            // Show masked password (asterisks)
-            if (entry->pszPassword && entry->uPasswordLen > 0) {
-                return QString("*").repeated(qMin(entry->uPasswordLen, 16u));
+            // Check if passwords should be hidden
+            // Reference: MFC m_bPasswordStars (PWMKEY_HIDESTARS)
+            if (PwSettings::instance().getHidePasswordStars()) {
+                // Show masked password (asterisks)
+                if (entry->pszPassword && entry->uPasswordLen > 0) {
+                    return QString("*").repeated(qMin(entry->uPasswordLen, 16u));
+                }
+            } else {
+                // Show actual password (for when user disables masking)
+                return QString::fromUtf8(entry->pszPassword);
             }
             return QString();
         case ColumnNotes:

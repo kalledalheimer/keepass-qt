@@ -16,14 +16,20 @@
 #include "OptionsDialog.h"
 #include "CsvExportDialog.h"
 #include "CsvImportDialog.h"
+#include "ExportOptionsDialog.h"
 #include "IconManager.h"
+#include "LanguagesDialog.h"
 #include "../core/PwManager.h"
+#include "TranslationManager.h"
 #include "../core/platform/PwSettings.h"
 #include "../core/util/PwUtil.h"
 #include "../core/util/CsvUtil.h"
+#include "../core/io/PwExport.h"
+#include "../core/io/PwImport.h"
 #include "../autotype/AutoTypeSequence.h"
 #include "../autotype/AutoTypeConfig.h"
 #include "../autotype/platform/AutoTypePlatform.h"
+#include "../autotype/GlobalHotkey.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -38,6 +44,13 @@
 #include <QCloseEvent>
 #include <QHeaderView>
 #include <QFile>
+#include <QPrinter>
+#include <QPrintDialog>
+#include <QPrintPreviewDialog>
+#include <QInputDialog>
+#include <QPageLayout>
+#include <QTextDocument>
+#include <QTemporaryFile>
 #include <QFileInfo>
 #include <QDir>
 #include <QDateTime>
@@ -87,6 +100,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     setupUi();
     createSystemTrayIcon();
+    setupGlobalHotkey();
     loadSettings();
     updateWindowTitle();
     updateActions();
@@ -157,6 +171,21 @@ void MainWindow::createActions()
     m_actionFileChangeMasterKey->setEnabled(false);
     connect(m_actionFileChangeMasterKey, &QAction::triggered, this, &MainWindow::onFileChangeMasterKey);
 
+    m_actionFileExportHtml = new QAction(tr("Export to &HTML..."), this);
+    m_actionFileExportHtml->setStatusTip(tr("Export database entries to HTML file"));
+    m_actionFileExportHtml->setEnabled(false);
+    connect(m_actionFileExportHtml, &QAction::triggered, this, &MainWindow::onFileExportHtml);
+
+    m_actionFileExportXml = new QAction(tr("Export to &XML..."), this);
+    m_actionFileExportXml->setStatusTip(tr("Export database entries to XML file"));
+    m_actionFileExportXml->setEnabled(false);
+    connect(m_actionFileExportXml, &QAction::triggered, this, &MainWindow::onFileExportXml);
+
+    m_actionFileExportTxt = new QAction(tr("Export to &TXT..."), this);
+    m_actionFileExportTxt->setStatusTip(tr("Export database entries to plain text file"));
+    m_actionFileExportTxt->setEnabled(false);
+    connect(m_actionFileExportTxt, &QAction::triggered, this, &MainWindow::onFileExportTxt);
+
     m_actionFileExportCsv = new QAction(tr("Export to &CSV..."), this);
     m_actionFileExportCsv->setStatusTip(tr("Export database entries to CSV file"));
     m_actionFileExportCsv->setEnabled(false);
@@ -166,6 +195,32 @@ void MainWindow::createActions()
     m_actionFileImportCsv->setStatusTip(tr("Import entries from CSV file"));
     m_actionFileImportCsv->setEnabled(false);
     connect(m_actionFileImportCsv, &QAction::triggered, this, &MainWindow::onFileImportCsv);
+
+    m_actionFileImportCodeWallet = new QAction(tr("Import from Code&Wallet TXT..."), this);
+    m_actionFileImportCodeWallet->setStatusTip(tr("Import entries from CodeWallet TXT export"));
+    m_actionFileImportCodeWallet->setEnabled(false);
+    connect(m_actionFileImportCodeWallet, &QAction::triggered, this, &MainWindow::onFileImportCodeWallet);
+
+    m_actionFileImportPwSafe = new QAction(tr("Import from Password &Safe TXT..."), this);
+    m_actionFileImportPwSafe->setStatusTip(tr("Import entries from Password Safe v3 TXT export"));
+    m_actionFileImportPwSafe->setEnabled(false);
+    connect(m_actionFileImportPwSafe, &QAction::triggered, this, &MainWindow::onFileImportPwSafe);
+
+    m_actionFileImportKeePass = new QAction(tr("Import/&Merge KeePass KDB..."), this);
+    m_actionFileImportKeePass->setStatusTip(tr("Merge entries from another KeePass 1.x database"));
+    m_actionFileImportKeePass->setEnabled(false);
+    connect(m_actionFileImportKeePass, &QAction::triggered, this, &MainWindow::onFileImportKeePass);
+
+    m_actionFilePrint = new QAction(tr("&Print..."), this);
+    m_actionFilePrint->setShortcut(QKeySequence::Print);
+    m_actionFilePrint->setStatusTip(tr("Print the database entries"));
+    m_actionFilePrint->setEnabled(false);
+    connect(m_actionFilePrint, &QAction::triggered, this, &MainWindow::onFilePrint);
+
+    m_actionFilePrintPreview = new QAction(tr("Print Pre&view..."), this);
+    m_actionFilePrintPreview->setStatusTip(tr("Preview the database entries before printing"));
+    m_actionFilePrintPreview->setEnabled(false);
+    connect(m_actionFilePrintPreview, &QAction::triggered, this, &MainWindow::onFilePrintPreview);
 
     m_actionFileExit = new QAction(tr("E&xit"), this);
     m_actionFileExit->setShortcut(QKeySequence::Quit);
@@ -206,6 +261,51 @@ void MainWindow::createActions()
     m_actionEditDeleteGroup->setStatusTip(tr("Delete the selected group"));
     m_actionEditDeleteGroup->setEnabled(false);
     connect(m_actionEditDeleteGroup, &QAction::triggered, this, &MainWindow::onEditDeleteGroup);
+
+    // Group management actions
+    // Reference: MFC OnGroupMoveUp, OnGroupMoveDown, OnGroupMoveLeft, OnGroupMoveRight, OnGroupSort
+    m_actionEditMoveGroupUp = new QAction(tr("Move Group &Up"), this);
+    m_actionEditMoveGroupUp->setStatusTip(tr("Move the selected group up"));
+    m_actionEditMoveGroupUp->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Up));
+    m_actionEditMoveGroupUp->setEnabled(false);
+    connect(m_actionEditMoveGroupUp, &QAction::triggered, this, &MainWindow::onEditMoveGroupUp);
+
+    m_actionEditMoveGroupDown = new QAction(tr("Move Group &Down"), this);
+    m_actionEditMoveGroupDown->setStatusTip(tr("Move the selected group down"));
+    m_actionEditMoveGroupDown->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Down));
+    m_actionEditMoveGroupDown->setEnabled(false);
+    connect(m_actionEditMoveGroupDown, &QAction::triggered, this, &MainWindow::onEditMoveGroupDown);
+
+    m_actionEditMoveGroupLeft = new QAction(tr("Move Group &Left"), this);
+    m_actionEditMoveGroupLeft->setStatusTip(tr("Decrease group tree level (move left)"));
+    m_actionEditMoveGroupLeft->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Left));
+    m_actionEditMoveGroupLeft->setEnabled(false);
+    connect(m_actionEditMoveGroupLeft, &QAction::triggered, this, &MainWindow::onEditMoveGroupLeft);
+
+    m_actionEditMoveGroupRight = new QAction(tr("Move Group &Right"), this);
+    m_actionEditMoveGroupRight->setStatusTip(tr("Increase group tree level (move right)"));
+    m_actionEditMoveGroupRight->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Right));
+    m_actionEditMoveGroupRight->setEnabled(false);
+    connect(m_actionEditMoveGroupRight, &QAction::triggered, this, &MainWindow::onEditMoveGroupRight);
+
+    m_actionEditSortGroups = new QAction(tr("&Sort Groups Alphabetically"), this);
+    m_actionEditSortGroups->setStatusTip(tr("Sort all groups alphabetically"));
+    m_actionEditSortGroups->setEnabled(false);
+    connect(m_actionEditSortGroups, &QAction::triggered, this, &MainWindow::onEditSortGroups);
+
+    // Entry management actions
+    // Reference: MFC OnPwlistMoveUp, OnPwlistMoveDown
+    m_actionEditMoveEntryUp = new QAction(tr("Move Entry U&p"), this);
+    m_actionEditMoveEntryUp->setStatusTip(tr("Move the selected entry up within its group"));
+    m_actionEditMoveEntryUp->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Up));
+    m_actionEditMoveEntryUp->setEnabled(false);
+    connect(m_actionEditMoveEntryUp, &QAction::triggered, this, &MainWindow::onEditMoveEntryUp);
+
+    m_actionEditMoveEntryDown = new QAction(tr("Move Entry Do&wn"), this);
+    m_actionEditMoveEntryDown->setStatusTip(tr("Move the selected entry down within its group"));
+    m_actionEditMoveEntryDown->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Down));
+    m_actionEditMoveEntryDown->setEnabled(false);
+    connect(m_actionEditMoveEntryDown, &QAction::triggered, this, &MainWindow::onEditMoveEntryDown);
 
     m_actionEditFind = new QAction(iconMgr.getToolbarIcon("tb_find"), tr("&Find..."), this);
     m_actionEditFind->setShortcut(QKeySequence::Find);
@@ -303,6 +403,17 @@ void MainWindow::createActions()
     m_actionViewColumnAttachment->setCheckable(true);
     connect(m_actionViewColumnAttachment, &QAction::triggered, this, &MainWindow::onViewColumnAttachment);
 
+    // View options - star hiding (matching MFC ID_VIEW_HIDESTARS, ID_VIEW_HIDEUSERS)
+    m_actionViewHidePasswordStars = new QAction(tr("&Hide Passwords"), this);
+    m_actionViewHidePasswordStars->setCheckable(true);
+    m_actionViewHidePasswordStars->setStatusTip(tr("Hide passwords with asterisks"));
+    connect(m_actionViewHidePasswordStars, &QAction::triggered, this, &MainWindow::onViewHidePasswordStars);
+
+    m_actionViewHideUsernameStars = new QAction(tr("Hide &Usernames"), this);
+    m_actionViewHideUsernameStars->setCheckable(true);
+    m_actionViewHideUsernameStars->setStatusTip(tr("Hide usernames with asterisks"));
+    connect(m_actionViewHideUsernameStars, &QAction::triggered, this, &MainWindow::onViewHideUsernameStars);
+
     // Tools menu actions
     m_actionToolsOptions = new QAction(tr("&Options..."), this);
     m_actionToolsOptions->setStatusTip(tr("Configure application settings"));
@@ -344,6 +455,10 @@ void MainWindow::createActions()
     m_actionHelpContents->setStatusTip(tr("Show help contents"));
     connect(m_actionHelpContents, &QAction::triggered, this, &MainWindow::onHelpContents);
 
+    m_actionHelpLanguages = new QAction(tr("&Languages..."), this);
+    m_actionHelpLanguages->setStatusTip(tr("Select application language"));
+    connect(m_actionHelpLanguages, &QAction::triggered, this, &MainWindow::onHelpLanguages);
+
     m_actionHelpAbout = new QAction(tr("&About KeePass"), this);
     m_actionHelpAbout->setStatusTip(tr("Show information about KeePass"));
     connect(m_actionHelpAbout, &QAction::triggered, this, &MainWindow::onHelpAbout);
@@ -359,8 +474,25 @@ void MainWindow::createMenus()
     fileMenu->addAction(m_actionFileSave);
     fileMenu->addAction(m_actionFileSaveAs);
     fileMenu->addSeparator();
-    fileMenu->addAction(m_actionFileImportCsv);
-    fileMenu->addAction(m_actionFileExportCsv);
+
+    // Import submenu
+    QMenu *importMenu = fileMenu->addMenu(tr("&Import"));
+    importMenu->addAction(m_actionFileImportCsv);
+    importMenu->addAction(m_actionFileImportCodeWallet);
+    importMenu->addAction(m_actionFileImportPwSafe);
+    importMenu->addSeparator();
+    importMenu->addAction(m_actionFileImportKeePass);
+
+    // Export submenu
+    QMenu *exportMenu = fileMenu->addMenu(tr("&Export"));
+    exportMenu->addAction(m_actionFileExportCsv);
+    exportMenu->addAction(m_actionFileExportHtml);
+    exportMenu->addAction(m_actionFileExportXml);
+    exportMenu->addAction(m_actionFileExportTxt);
+
+    fileMenu->addSeparator();
+    fileMenu->addAction(m_actionFilePrint);
+    fileMenu->addAction(m_actionFilePrintPreview);
     fileMenu->addSeparator();
     fileMenu->addAction(m_actionFileClose);
     fileMenu->addAction(m_actionFileLockWorkspace);
@@ -378,6 +510,16 @@ void MainWindow::createMenus()
     editMenu->addSeparator();
     editMenu->addAction(m_actionEditDeleteEntry);
     editMenu->addAction(m_actionEditDeleteGroup);
+    editMenu->addSeparator();
+    editMenu->addAction(m_actionEditMoveGroupUp);
+    editMenu->addAction(m_actionEditMoveGroupDown);
+    editMenu->addAction(m_actionEditMoveGroupLeft);
+    editMenu->addAction(m_actionEditMoveGroupRight);
+    editMenu->addSeparator();
+    editMenu->addAction(m_actionEditSortGroups);
+    editMenu->addSeparator();
+    editMenu->addAction(m_actionEditMoveEntryUp);
+    editMenu->addAction(m_actionEditMoveEntryDown);
     editMenu->addSeparator();
     editMenu->addAction(m_actionEditCopyUsername);
     editMenu->addAction(m_actionEditCopyPassword);
@@ -411,6 +553,11 @@ void MainWindow::createMenus()
     columnsMenu->addAction(m_actionViewColumnUUID);
     columnsMenu->addAction(m_actionViewColumnAttachment);
 
+    // Star hiding options (matching MFC View menu)
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_actionViewHidePasswordStars);
+    viewMenu->addAction(m_actionViewHideUsernameStars);
+
     // Tools menu
     QMenu *toolsMenu = menuBar()->addMenu(tr("&Tools"));
     toolsMenu->addAction(m_actionToolsPasswordGenerator);
@@ -427,6 +574,8 @@ void MainWindow::createMenus()
     // Help menu
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
     helpMenu->addAction(m_actionHelpContents);
+    helpMenu->addSeparator();
+    helpMenu->addAction(m_actionHelpLanguages);
     helpMenu->addSeparator();
     helpMenu->addAction(m_actionHelpAbout);
 }
@@ -552,8 +701,16 @@ void MainWindow::updateActions()
     m_actionFileClose->setEnabled(unlocked);
     m_actionFileLockWorkspace->setEnabled(m_hasDatabase);  // Can lock/unlock anytime
     m_actionFileChangeMasterKey->setEnabled(unlocked);  // Can only change when unlocked
+    m_actionFileExportHtml->setEnabled(unlocked);  // Can export when unlocked
+    m_actionFileExportXml->setEnabled(unlocked);  // Can export when unlocked
+    m_actionFileExportTxt->setEnabled(unlocked);  // Can export when unlocked
     m_actionFileExportCsv->setEnabled(unlocked);  // Can export when unlocked
     m_actionFileImportCsv->setEnabled(unlocked);  // Can import when unlocked
+    m_actionFileImportCodeWallet->setEnabled(unlocked);  // Can import when unlocked
+    m_actionFileImportPwSafe->setEnabled(unlocked);  // Can import when unlocked
+    m_actionFileImportKeePass->setEnabled(unlocked);  // Can import when unlocked
+    m_actionFilePrint->setEnabled(unlocked);  // Can print when unlocked
+    m_actionFilePrintPreview->setEnabled(unlocked);  // Can print preview when unlocked
 
     // Edit menu - all disabled when locked
     m_actionEditAddGroup->setEnabled(unlocked);
@@ -562,6 +719,19 @@ void MainWindow::updateActions()
     m_actionEditDuplicateEntry->setEnabled(unlocked && hasSelection);
     m_actionEditDeleteEntry->setEnabled(unlocked && hasSelection);
     m_actionEditDeleteGroup->setEnabled(unlocked);
+
+    // Group management actions - enabled only when a group is selected
+    bool hasGroupSelection = unlocked && m_groupView->currentIndex().isValid();
+    m_actionEditMoveGroupUp->setEnabled(hasGroupSelection);
+    m_actionEditMoveGroupDown->setEnabled(hasGroupSelection);
+    m_actionEditMoveGroupLeft->setEnabled(hasGroupSelection);
+    m_actionEditMoveGroupRight->setEnabled(hasGroupSelection);
+    m_actionEditSortGroups->setEnabled(unlocked);  // Always enabled when unlocked
+
+    // Entry management actions - enabled only when an entry is selected
+    m_actionEditMoveEntryUp->setEnabled(unlocked && hasSelection);
+    m_actionEditMoveEntryDown->setEnabled(unlocked && hasSelection);
+
     m_actionEditFind->setEnabled(unlocked);
     m_actionEditCopyUsername->setEnabled(unlocked && hasSelection);
     m_actionEditCopyPassword->setEnabled(unlocked && hasSelection);
@@ -586,6 +756,10 @@ void MainWindow::updateActions()
         m_actionViewColumnUUID->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnUUID));
         m_actionViewColumnAttachment->setChecked(m_entryModel->isColumnVisible(EntryModel::ColumnAttachment));
     }
+
+    // Star hiding actions - sync with settings (Reference: MFC m_bPasswordStars, m_bUserStars)
+    m_actionViewHidePasswordStars->setChecked(PwSettings::instance().getHidePasswordStars());
+    m_actionViewHideUsernameStars->setChecked(PwSettings::instance().getHideUsernameStars());
 
     // Tools menu - disabled when locked
     m_actionToolsPasswordGenerator->setEnabled(unlocked);
@@ -997,6 +1171,243 @@ void MainWindow::onFileExportCsv()
     m_statusLabel->setText(tr("CSV export successful"));
 }
 
+void MainWindow::onFileExportHtml()
+{
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show export options dialog
+    ExportOptionsDialog dialog(PWEXP_HTML, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("HTML export cancelled"));
+        return;
+    }
+
+    quint32 fieldFlags = dialog.getSelectedFields();
+
+    // Show file save dialog
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Export to HTML"),
+        QDir::homePath() + "/export.html",
+        tr("HTML Files (*.html *.htm);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("HTML export cancelled"));
+        return;
+    }
+
+    // Add .html extension if not present
+    if (!filePath.endsWith(".html", Qt::CaseInsensitive) &&
+        !filePath.endsWith(".htm", Qt::CaseInsensitive)) {
+        filePath += ".html";
+    }
+
+    // Export to HTML
+    if (!PwExport::exportDatabase(m_pwManager, filePath, PWEXP_HTML, fieldFlags)) {
+        QMessageBox::critical(this, tr("Export Failed"),
+                            tr("Failed to export to HTML:\n\n%1").arg(filePath));
+        m_statusLabel->setText(tr("HTML export failed"));
+        return;
+    }
+
+    // Success
+    QMessageBox::information(this, tr("Export Successful"),
+                           tr("Database exported to HTML successfully:\n\n%1").arg(filePath));
+    m_statusLabel->setText(tr("HTML export successful"));
+}
+
+void MainWindow::onFileExportXml()
+{
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show export options dialog
+    ExportOptionsDialog dialog(PWEXP_XML, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("XML export cancelled"));
+        return;
+    }
+
+    quint32 fieldFlags = dialog.getSelectedFields();
+
+    // Show file save dialog
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Export to XML"),
+        QDir::homePath() + "/export.xml",
+        tr("XML Files (*.xml);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("XML export cancelled"));
+        return;
+    }
+
+    // Add .xml extension if not present
+    if (!filePath.endsWith(".xml", Qt::CaseInsensitive)) {
+        filePath += ".xml";
+    }
+
+    // Export to XML
+    if (!PwExport::exportDatabase(m_pwManager, filePath, PWEXP_XML, fieldFlags)) {
+        QMessageBox::critical(this, tr("Export Failed"),
+                            tr("Failed to export to XML:\n\n%1").arg(filePath));
+        m_statusLabel->setText(tr("XML export failed"));
+        return;
+    }
+
+    // Success
+    QMessageBox::information(this, tr("Export Successful"),
+                           tr("Database exported to XML successfully:\n\n%1").arg(filePath));
+    m_statusLabel->setText(tr("XML export successful"));
+}
+
+void MainWindow::onFileExportTxt()
+{
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show export options dialog
+    ExportOptionsDialog dialog(PWEXP_TXT, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("TXT export cancelled"));
+        return;
+    }
+
+    quint32 fieldFlags = dialog.getSelectedFields();
+
+    // Show file save dialog
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Export to TXT"),
+        QDir::homePath() + "/export.txt",
+        tr("Text Files (*.txt);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("TXT export cancelled"));
+        return;
+    }
+
+    // Add .txt extension if not present
+    if (!filePath.endsWith(".txt", Qt::CaseInsensitive)) {
+        filePath += ".txt";
+    }
+
+    // Export to TXT
+    if (!PwExport::exportDatabase(m_pwManager, filePath, PWEXP_TXT, fieldFlags)) {
+        QMessageBox::critical(this, tr("Export Failed"),
+                            tr("Failed to export to TXT:\n\n%1").arg(filePath));
+        m_statusLabel->setText(tr("TXT export failed"));
+        return;
+    }
+
+    // Success
+    QMessageBox::information(this, tr("Export Successful"),
+                           tr("Database exported to TXT successfully:\n\n%1").arg(filePath));
+    m_statusLabel->setText(tr("TXT export successful"));
+}
+
+void MainWindow::onFilePrint()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFilePrint
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show export options dialog to choose fields
+    ExportOptionsDialog dialog(PWEXP_HTML, this);
+    dialog.setWindowTitle(tr("Print Options"));
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("Print cancelled"));
+        return;
+    }
+
+    quint32 fieldFlags = dialog.getSelectedFields();
+
+    // Create printer
+    QPrinter printer{QPrinter::HighResolution};
+    printer.setPageOrientation(QPageLayout::Orientation::Portrait);
+
+    // Show print dialog
+    QPrintDialog printDialog(&printer, this);
+    printDialog.setWindowTitle(tr("Print Database"));
+
+    if (printDialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("Print cancelled"));
+        return;
+    }
+
+    // Generate HTML and print
+    QString html = generateHtmlForPrint(fieldFlags);
+    if (html.isEmpty()) {
+        QMessageBox::critical(this, tr("Print Failed"),
+                            tr("Failed to generate content for printing."));
+        m_statusLabel->setText(tr("Print failed"));
+        return;
+    }
+
+    // Print the document
+    QTextDocument document;
+    document.setHtml(html);
+    document.print(&printer);
+
+    m_statusLabel->setText(tr("Print successful"));
+}
+
+void MainWindow::onFilePrintPreview()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFilePrintPreview
+    if (!m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Show export options dialog to choose fields
+    ExportOptionsDialog dialog(PWEXP_HTML, this);
+    dialog.setWindowTitle(tr("Print Preview Options"));
+    if (dialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("Print preview cancelled"));
+        return;
+    }
+
+    quint32 fieldFlags = dialog.getSelectedFields();
+
+    // Generate HTML
+    QString html = generateHtmlForPrint(fieldFlags);
+    if (html.isEmpty()) {
+        QMessageBox::critical(this, tr("Print Preview Failed"),
+                            tr("Failed to generate content for preview."));
+        m_statusLabel->setText(tr("Print preview failed"));
+        return;
+    }
+
+    // Show print preview dialog
+    QPrintPreviewDialog preview(this);
+    preview.setWindowTitle(tr("Print Preview - KeePass"));
+
+    // Connect preview to print handler
+    connect(&preview, &QPrintPreviewDialog::paintRequested, this,
+            [html](QPrinter *printer) {
+                QTextDocument document;
+                document.setHtml(html);
+                document.print(printer);
+            });
+
+    preview.exec();
+    m_statusLabel->setText(tr("Print preview closed"));
+}
+
 void MainWindow::onFileImportCsv()
 {
     // Reference: MFC WinGUI/PwSafeDlg.cpp OnFileImport
@@ -1049,6 +1460,165 @@ void MainWindow::onFileImportCsv()
     QMessageBox::information(this, tr("Import Successful"),
                            tr("Imported %n entr(ies) from CSV successfully:\n\n%1", "", entriesImported).arg(filePath));
     m_statusLabel->setText(tr("Imported %n entr(ies) from CSV", "", entriesImported));
+}
+
+void MainWindow::onFileImportCodeWallet()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFileImport (PWIMP_CWALLET)
+
+    QString filePath = QFileDialog::getOpenFileName(
+        this,
+        tr("Import from CodeWallet TXT"),
+        QDir::homePath(),
+        tr("Text Files (*.txt);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("Import cancelled"));
+        return;
+    }
+
+    // Import from CodeWallet
+    QString errorMsg;
+    if (!PwImport::importFromFile(m_pwManager, filePath, PWIMP_CWALLET, &errorMsg)) {
+        QMessageBox::critical(this, tr("Import Failed"),
+                            tr("Failed to import from CodeWallet TXT:\n\n%1").arg(errorMsg));
+        m_statusLabel->setText(tr("CodeWallet import failed"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    updateStatusBar();
+
+    // Success
+    QMessageBox::information(this, tr("Import Successful"),
+                           tr("Successfully imported entries from CodeWallet TXT file:\n\n%1").arg(filePath));
+    m_statusLabel->setText(tr("Imported from CodeWallet TXT"));
+}
+
+void MainWindow::onFileImportPwSafe()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFileImport (PWIMP_PWSAFE)
+
+    QString filePath = QFileDialog::getOpenFileName(
+        this,
+        tr("Import from Password Safe TXT"),
+        QDir::homePath(),
+        tr("Text Files (*.txt);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("Import cancelled"));
+        return;
+    }
+
+    // Import from Password Safe
+    QString errorMsg;
+    if (!PwImport::importFromFile(m_pwManager, filePath, PWIMP_PWSAFE, &errorMsg)) {
+        QMessageBox::critical(this, tr("Import Failed"),
+                            tr("Failed to import from Password Safe TXT:\n\n%1").arg(errorMsg));
+        m_statusLabel->setText(tr("Password Safe import failed"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    updateStatusBar();
+
+    // Success
+    QMessageBox::information(this, tr("Import Successful"),
+                           tr("Successfully imported entries from Password Safe TXT file:\n\n%1").arg(filePath));
+    m_statusLabel->setText(tr("Imported from Password Safe TXT"));
+}
+
+void MainWindow::onFileImportKeePass()
+{
+    // Reference: MFC WinGUI/PwSafeDlg.cpp OnFileImport (PWIMP_KEEPASS)
+
+    QString filePath = QFileDialog::getOpenFileName(
+        this,
+        tr("Merge KeePass Database"),
+        QDir::homePath(),
+        tr("KeePass Database (*.kdb);;All Files (*)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog
+    );
+
+    if (filePath.isEmpty()) {
+        m_statusLabel->setText(tr("Merge cancelled"));
+        return;
+    }
+
+    // Ask for the master password of the source database
+    MasterKeyDialog keyDialog(MasterKeyDialog::OpenExisting, this);
+    keyDialog.setWindowTitle(tr("Enter Master Password for Source Database"));
+    if (keyDialog.exec() != QDialog::Accepted) {
+        m_statusLabel->setText(tr("Merge cancelled"));
+        return;
+    }
+
+    QString masterPassword = keyDialog.getPassword();
+
+    // Ask for merge mode
+    QStringList modeOptions;
+    modeOptions << tr("Create new UUIDs for all imported entries (safe, no conflicts)");
+    modeOptions << tr("Overwrite existing entries unconditionally");
+    modeOptions << tr("Overwrite only if source entry is newer");
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(
+        this,
+        tr("Merge Mode"),
+        tr("How should entries with the same UUID be handled?"),
+        modeOptions,
+        0,
+        false,
+        &ok
+    );
+
+    if (!ok) {
+        m_statusLabel->setText(tr("Merge cancelled"));
+        return;
+    }
+
+    KdbMergeMode mergeMode = KdbMergeMode::CREATE_NEW_UUIDS;
+    if (selected == modeOptions.at(1)) {
+        mergeMode = KdbMergeMode::OVERWRITE_ALWAYS;
+    } else if (selected == modeOptions.at(2)) {
+        mergeMode = KdbMergeMode::OVERWRITE_IF_NEWER;
+    }
+
+    // Merge the database
+    QString errorMsg;
+    if (!PwImport::mergeDatabase(m_pwManager, filePath, masterPassword, mergeMode, &errorMsg)) {
+        QMessageBox::critical(this, tr("Merge Failed"),
+                            tr("Failed to merge KeePass database:\n\n%1").arg(errorMsg));
+        m_statusLabel->setText(tr("Database merge failed"));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    refreshModels();
+    updateWindowTitle();
+    updateActions();
+    updateStatusBar();
+
+    // Success
+    QMessageBox::information(this, tr("Merge Successful"),
+                           tr("Successfully merged entries from KeePass database:\n\n%1").arg(filePath));
+    m_statusLabel->setText(tr("Merged KeePass database"));
 }
 
 void MainWindow::onFileExit()
@@ -1214,7 +1784,7 @@ void MainWindow::onEditAddEntry()
             quint32 numEntries = m_pwManager->getNumberOfEntries();
             if (numEntries > 0) {
                 PW_ENTRY* newEntry = m_pwManager->getEntry(numEntries - 1);
-                if (newEntry) {
+                if (newEntry != nullptr) {
                     QString errorMsg;
                     if (!PwUtil::attachFileAsBinaryData(newEntry, attachmentPath, &errorMsg)) {
                         QMessageBox::warning(this, tr("Warning"),
@@ -1326,7 +1896,7 @@ void MainWindow::onEditEditEntry()
     std::strcpy(entryTemplate.pszAdditional, notesUtf8.constData());
 
     // Copy binary data from original entry
-    if (entry->pszBinaryDesc && entry->pBinaryData && entry->uBinaryDataLen > 0) {
+    if (entry->pszBinaryDesc != nullptr && entry->pBinaryData != nullptr && entry->uBinaryDataLen > 0) {
         size_t descLen = std::strlen(entry->pszBinaryDesc);
         entryTemplate.pszBinaryDesc = new char[descLen + 1];
         std::strcpy(entryTemplate.pszBinaryDesc, entry->pszBinaryDesc);
@@ -1355,9 +1925,7 @@ void MainWindow::onEditEditEntry()
     delete[] entryTemplate.pszURL;
     delete[] entryTemplate.pszAdditional;
     delete[] entryTemplate.pszBinaryDesc;
-    if (entryTemplate.pBinaryData) {
-        delete[] entryTemplate.pBinaryData;
-    }
+    delete[] entryTemplate.pBinaryData;
 
     if (!success) {
         QMessageBox::critical(this, tr("Error"),
@@ -1406,7 +1974,7 @@ void MainWindow::onEditDuplicateEntry()
 
     // Get the entry from the model
     PW_ENTRY *originalEntry = m_entryModel->getEntry(currentIndex);
-    if (!originalEntry) {
+    if (originalEntry == nullptr) {
         QMessageBox::critical(this, tr("Error"),
                             tr("Failed to get entry data."));
         return;
@@ -1455,7 +2023,7 @@ void MainWindow::onEditDuplicateEntry()
     std::strcpy(entryTemplate.pszAdditional, notesUtf8.constData());
 
     // Copy binary data if present
-    if (originalEntry->pszBinaryDesc && originalEntry->pBinaryData &&
+    if (originalEntry->pszBinaryDesc != nullptr && originalEntry->pBinaryData != nullptr &&
         originalEntry->uBinaryDataLen > 0) {
         size_t descLen = std::strlen(originalEntry->pszBinaryDesc);
         entryTemplate.pszBinaryDesc = new char[descLen + 1];
@@ -1491,9 +2059,7 @@ void MainWindow::onEditDuplicateEntry()
     delete[] entryTemplate.pszURL;
     delete[] entryTemplate.pszAdditional;
     delete[] entryTemplate.pszBinaryDesc;
-    if (entryTemplate.pBinaryData) {
-        delete[] entryTemplate.pBinaryData;
-    }
+    delete[] entryTemplate.pBinaryData;
 
     if (!success) {
         QMessageBox::critical(this, tr("Error"),
@@ -1700,6 +2266,346 @@ void MainWindow::onEditDeleteGroup()
     }
 }
 
+void MainWindow::onEditMoveGroupUp()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnGroupMoveUp (line ~7115)
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected group
+    QModelIndex currentIndex = m_groupView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Please select a group to move."));
+        return;
+    }
+
+    PW_GROUP *group = m_groupModel->getGroup(currentIndex);
+    if (!group) {
+        return;
+    }
+
+    // Move group up using MFC method: moveGroupExDir with direction -1
+    bool success = m_pwManager->moveGroupExDir(group->uGroupId, -1);
+
+    if (!success) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Cannot move this group up (already at top of its level)."));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    m_groupModel->refresh();
+    updateWindowTitle();
+    updateActions();
+
+    // Re-select the moved group
+    QModelIndex newIndex = m_groupModel->indexForGroup(group->uGroupId);
+    if (newIndex.isValid()) {
+        m_groupView->setCurrentIndex(newIndex);
+        m_groupView->scrollTo(newIndex);
+    }
+
+    m_statusLabel->setText(tr("Group moved up"));
+}
+
+void MainWindow::onEditMoveGroupDown()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnGroupMoveDown
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected group
+    QModelIndex currentIndex = m_groupView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Please select a group to move."));
+        return;
+    }
+
+    PW_GROUP *group = m_groupModel->getGroup(currentIndex);
+    if (!group) {
+        return;
+    }
+
+    // Move group down using MFC method: moveGroupExDir with direction +1
+    bool success = m_pwManager->moveGroupExDir(group->uGroupId, +1);
+
+    if (!success) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Cannot move this group down (already at bottom of its level)."));
+        return;
+    }
+
+    // Update UI
+    m_isModified = true;
+    m_groupModel->refresh();
+    updateWindowTitle();
+    updateActions();
+
+    // Re-select the moved group
+    QModelIndex newIndex = m_groupModel->indexForGroup(group->uGroupId);
+    if (newIndex.isValid()) {
+        m_groupView->setCurrentIndex(newIndex);
+        m_groupView->scrollTo(newIndex);
+    }
+
+    m_statusLabel->setText(tr("Group moved down"));
+}
+
+void MainWindow::onEditMoveGroupLeft()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnGroupMoveLeft
+    // Decrease tree level (move to parent's level)
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected group
+    QModelIndex currentIndex = m_groupView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Please select a group to move."));
+        return;
+    }
+
+    PW_GROUP *group = m_groupModel->getGroup(currentIndex);
+    if (!group) {
+        return;
+    }
+
+    // Cannot move left if already at top level (level 0)
+    if (group->usLevel == 0) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Cannot move group left (already at top level)."));
+        return;
+    }
+
+    // Decrease tree level
+    group->usLevel--;
+
+    // Update UI
+    m_isModified = true;
+    m_groupModel->refresh();
+    updateWindowTitle();
+    updateActions();
+
+    // Re-select the moved group
+    QModelIndex newIndex = m_groupModel->indexForGroup(group->uGroupId);
+    if (newIndex.isValid()) {
+        m_groupView->setCurrentIndex(newIndex);
+        m_groupView->scrollTo(newIndex);
+        m_groupView->expand(newIndex);
+    }
+
+    m_statusLabel->setText(tr("Group tree level decreased"));
+}
+
+void MainWindow::onEditMoveGroupRight()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnGroupMoveRight
+    // Increase tree level (make it a child of previous sibling)
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected group
+    QModelIndex currentIndex = m_groupView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Please select a group to move."));
+        return;
+    }
+
+    PW_GROUP *group = m_groupModel->getGroup(currentIndex);
+    if (!group) {
+        return;
+    }
+
+    // Find the group index in the flat list
+    quint32 groupIndex = m_pwManager->getGroupByIdN(group->uGroupId);
+
+    // Cannot move right if it's the first group at this level
+    if (groupIndex == 0) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Cannot move group right (no previous sibling)."));
+        return;
+    }
+
+    // Get previous group
+    PW_GROUP *prevGroup = m_pwManager->getGroup(groupIndex - 1);
+    if (!prevGroup || prevGroup->usLevel != group->usLevel) {
+        QMessageBox::information(this, tr("Move Group"),
+                               tr("Cannot move group right (no previous sibling at same level)."));
+        return;
+    }
+
+    // Increase tree level
+    group->usLevel++;
+
+    // Update UI
+    m_isModified = true;
+    m_groupModel->refresh();
+    updateWindowTitle();
+    updateActions();
+
+    // Re-select the moved group and expand parent
+    QModelIndex newIndex = m_groupModel->indexForGroup(group->uGroupId);
+    if (newIndex.isValid()) {
+        QModelIndex parentIndex = newIndex.parent();
+        if (parentIndex.isValid()) {
+            m_groupView->expand(parentIndex);
+        }
+        m_groupView->setCurrentIndex(newIndex);
+        m_groupView->scrollTo(newIndex);
+    }
+
+    m_statusLabel->setText(tr("Group tree level increased"));
+}
+
+void MainWindow::onEditSortGroups()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnGroupSort
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
+        return;
+    }
+
+    // Confirm sort operation
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        tr("Sort Groups"),
+        tr("This will sort all groups alphabetically.\n\n"
+           "Do you want to continue?"),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::Yes
+    );
+
+    if (reply != QMessageBox::Yes) {
+        m_statusLabel->setText(tr("Sort cancelled"));
+        return;
+    }
+
+    // Get currently selected group ID to restore selection after sort
+    quint32 selectedGroupId = 0;
+    QModelIndex currentIndex = m_groupView->currentIndex();
+    if (currentIndex.isValid()) {
+        PW_GROUP *group = m_groupModel->getGroup(currentIndex);
+        if (group) {
+            selectedGroupId = group->uGroupId;
+        }
+    }
+
+    // Sort all groups alphabetically
+    m_pwManager->sortGroupList();
+
+    // Update UI
+    m_isModified = true;
+    m_groupModel->refresh();
+    updateWindowTitle();
+    updateActions();
+
+    // Restore selection if possible
+    if (selectedGroupId != 0) {
+        QModelIndex newIndex = m_groupModel->indexForGroup(selectedGroupId);
+        if (newIndex.isValid()) {
+            m_groupView->setCurrentIndex(newIndex);
+            m_groupView->scrollTo(newIndex);
+        }
+    }
+
+    m_statusLabel->setText(tr("Groups sorted alphabetically"));
+}
+
+void MainWindow::onEditMoveEntryUp()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnPwlistMoveUp (line ~6540)
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected entry
+    QModelIndex currentIndex = m_entryView->currentIndex();
+    if (!currentIndex.isValid()) {
+        return;
+    }
+
+    int row = currentIndex.row();
+    if (row <= 0) {
+        // Already at top
+        return;
+    }
+
+    // Get current entry to determine group ID
+    const PW_ENTRY* entry = m_entryModel->getEntry(currentIndex);
+    if (entry == nullptr) {
+        return;
+    }
+
+    // Move entry up within its group
+    m_pwManager->moveEntry(entry->uGroupId, row, row - 1);
+
+    // Update UI
+    m_isModified = true;
+    m_entryModel->refresh();
+    updateWindowTitle();
+
+    // Re-select the moved entry
+    QModelIndex newIndex = m_entryModel->index(row - 1, 0);
+    if (newIndex.isValid()) {
+        m_entryView->setCurrentIndex(newIndex);
+        m_entryView->scrollTo(newIndex);
+    }
+
+    m_statusLabel->setText(tr("Entry moved up"));
+}
+
+void MainWindow::onEditMoveEntryDown()
+{
+    // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp OnPwlistMoveDown (line ~6595)
+    if ((m_pwManager == nullptr) || !m_hasDatabase) {
+        return;
+    }
+
+    // Get selected entry
+    QModelIndex currentIndex = m_entryView->currentIndex();
+    if (!currentIndex.isValid()) {
+        return;
+    }
+
+    int row = currentIndex.row();
+    int rowCount = m_entryModel->rowCount();
+    if (row >= rowCount - 1) {
+        // Already at bottom
+        return;
+    }
+
+    // Get current entry to determine group ID
+    const PW_ENTRY* entry = m_entryModel->getEntry(currentIndex);
+    if (entry == nullptr) {
+        return;
+    }
+
+    // Move entry down within its group
+    m_pwManager->moveEntry(entry->uGroupId, row, row + 1);
+
+    // Update UI
+    m_isModified = true;
+    m_entryModel->refresh();
+    updateWindowTitle();
+
+    // Re-select the moved entry
+    QModelIndex newIndex = m_entryModel->index(row + 1, 0);
+    if (newIndex.isValid()) {
+        m_entryView->setCurrentIndex(newIndex);
+        m_entryView->scrollTo(newIndex);
+    }
+
+    m_statusLabel->setText(tr("Entry moved down"));
+}
+
 void MainWindow::onEditFind()
 {
     // Reference: MFC/MFC-KeePass/WinGUI/PwSafeDlg.cpp _Find method
@@ -1807,6 +2713,21 @@ void MainWindow::onToolsOptions()
     if (dialog.exec() == QDialog::Accepted) {
         // Note: Settings are automatically saved by OptionsDialog when OK is clicked
         // Some settings might require application restart to take effect
+
+        // Re-register global hotkey if settings changed
+        GlobalHotkey& hotkey = GlobalHotkey::instance();
+        hotkey.unregisterHotkey();
+
+        PwSettings& settings = PwSettings::instance();
+        if (settings.getAutoTypeEnabled()) {
+            QKeySequence keySeq = dialog.autoTypeGlobalHotkey();
+            if (!keySeq.isEmpty()) {
+                if (!hotkey.registerHotkey(keySeq)) {
+                    qWarning() << "Failed to register global hotkey:" << hotkey.lastError();
+                }
+            }
+        }
+
         m_statusLabel->setText(tr("Settings saved successfully"));
     }
 }
@@ -2103,6 +3024,28 @@ void MainWindow::onHelpContents()
     QMessageBox::information(this, tr("Help"),
                            tr("KeePass Qt - Password Safe\n\n"
                               "Visit https://keepass.info for documentation."));
+}
+
+void MainWindow::onHelpLanguages()
+{
+    LanguagesDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted) {
+        QString selectedLang = dialog.selectedLanguage();
+        if (!selectedLang.isEmpty()) {
+            // Save the selection
+            PwSettings::instance().set("Language", selectedLang);
+
+            // Apply the language change
+            TranslationManager &tm = TranslationManager::instance();
+            if (tm.setLanguage(selectedLang)) {
+                // Inform user that restart may be needed for full effect
+                QMessageBox::information(this, tr("Language Changed"),
+                    tr("Language has been changed to %1.\n\n"
+                       "Some changes may require restarting the application.")
+                    .arg(tm.languageInfo(selectedLang).name));
+            }
+        }
+    }
 }
 
 void MainWindow::onHelpAbout()
@@ -2621,13 +3564,25 @@ void MainWindow::onEditAutoType()
     // Process events to ensure status bar updates
     QApplication::processEvents();
 
-    // Minimize to allow typing in target window
-    showMinimized();
+    // Choose method based on settings: minimize or drop-back
+    // Reference: MFC ATM_MINIMIZE vs ATM_DROPBACK (PwSafeDlg.cpp:10042-10072)
+    bool minimizeMethod = PwSettings::instance().getAutoTypeMinimizeBeforeType();
+    bool wasVisible = isVisible();
 
-    // Process events to ensure minimize completes
+    if (minimizeMethod) {
+        // Minimize method: Minimize window to taskbar/tray
+        // This is the default and more reliable method
+        showMinimized();
+    } else {
+        // Drop-back method: Hide window without minimizing
+        // The OS will automatically activate the window below
+        hide();
+    }
+
+    // Process events to ensure window state change completes
     QApplication::processEvents();
 
-    // Wait for window to minimize and previous window to activate
+    // Wait for window to hide and previous window to activate
     // Increased delay to ensure proper window switching
     QThread::msleep(800);
 
@@ -2635,13 +3590,29 @@ void MainWindow::onEditAutoType()
     bool success = autoType->performAutoType(actions);
 
     if (!success) {
-        // Restore window
-        showNormal();
-        activateWindow();
+        // Restore window based on method used
+        if (minimizeMethod) {
+            showNormal();
+            activateWindow();
+        } else {
+            // Drop-back method: restore visibility if it was visible
+            if (wasVisible) {
+                show();
+                activateWindow();
+            }
+        }
 
         QMessageBox::critical(this, tr("Auto-Type"),
                             tr("Auto-Type failed:\n%1").arg(autoType->lastError()));
         return;
+    }
+
+    // Restore window after successful auto-type
+    // For minimize method, leave minimized (user can restore manually)
+    // For drop-back method, restore visibility
+    if (!minimizeMethod && wasVisible) {
+        show();
+        // Don't activate - let target window keep focus
     }
 
     // Update last access time
@@ -2919,6 +3890,70 @@ void MainWindow::onTrayExit()
     close();
 }
 
+// Global hotkey methods
+
+void MainWindow::setupGlobalHotkey()
+{
+    // Reference: MFC CPwSafeDlg implements global hotkey via RegisterHotKey
+    // We use CGEventTap on macOS (in GlobalHotkey_mac.cpp)
+
+    GlobalHotkey& hotkey = GlobalHotkey::instance();
+
+    // Connect the hotkey signal to our handler
+    connect(&hotkey, &GlobalHotkey::hotkeyTriggered,
+            this, &MainWindow::onGlobalHotkeyTriggered);
+
+    // Load hotkey configuration from settings
+    PwSettings& settings = PwSettings::instance();
+    quint32 hotkeyValue = settings.getAutoTypeGlobalHotKey();
+
+    // Default: Ctrl+Alt+A (if no hotkey is configured)
+    QKeySequence keySeq;
+    if (hotkeyValue != 0) {
+        keySeq = QKeySequence(static_cast<int>(hotkeyValue));
+    } else {
+        keySeq = QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_A);
+    }
+
+    // Only register if auto-type is enabled
+    if (settings.getAutoTypeEnabled() && !keySeq.isEmpty()) {
+        if (!hotkey.registerHotkey(keySeq)) {
+            qWarning() << "Failed to register global hotkey:" << hotkey.lastError();
+        }
+    }
+}
+
+void MainWindow::onGlobalHotkeyTriggered()
+{
+    // Reference: MFC CPwSafeDlg::OnHotKey (PwSafeDlg.cpp:6148)
+    // When global hotkey is pressed, trigger auto-type for the selected entry
+
+    // Check if auto-type is enabled
+    PwSettings& settings = PwSettings::instance();
+    if (!settings.getAutoTypeEnabled()) {
+        return;
+    }
+
+    // Check if database is open and not locked
+    if (!m_hasDatabase || m_isLocked) {
+        // Bring window to front and show unlock dialog
+        show();
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+        raise();
+        activateWindow();
+
+        if (m_isLocked) {
+            unlockWorkspace();
+        }
+        return;
+    }
+
+    // Trigger auto-type
+    // For now, we use the selected entry approach
+    // A full implementation would match entries by the currently active window title
+    onEditAutoType();
+}
+
 // Column visibility slots
 
 void MainWindow::onViewColumnTitle(bool checked)
@@ -2998,6 +4033,30 @@ void MainWindow::onViewColumnAttachment(bool checked)
     }
 }
 
+void MainWindow::onViewHidePasswordStars(bool checked)
+{
+    // Reference: MFC OnViewHideStars (PwSafeDlg.cpp:2656-2697)
+    PwSettings::instance().setHidePasswordStars(checked);
+    PwSettings::instance().sync();
+
+    // Force refresh of entry view to show/hide passwords
+    if (m_entryModel != nullptr) {
+        m_entryModel->refresh();
+    }
+}
+
+void MainWindow::onViewHideUsernameStars(bool checked)
+{
+    // Reference: MFC OnViewHideUsers (PwSafeDlg.cpp:9178-9225)
+    PwSettings::instance().setHideUsernameStars(checked);
+    PwSettings::instance().sync();
+
+    // Force refresh of entry view to show/hide usernames
+    if (m_entryModel != nullptr) {
+        m_entryModel->refresh();
+    }
+}
+
 // Database Tools
 
 void MainWindow::onToolsShowExpiredEntries()
@@ -3047,4 +4106,42 @@ void MainWindow::onToolsShowExpiringSoon()
 
     // Update status bar to show count
     m_statusLabel->setText(tr("Found %1 entries expiring within %2 days").arg(expiringIndices.count()).arg(days));
+}
+
+// Helper: Generate HTML for printing
+QString MainWindow::generateHtmlForPrint(quint32 fieldFlags)
+{
+    // Generate HTML using PwExport to a temporary file
+    QTemporaryFile tempFile;
+    tempFile.setFileTemplate(QDir::tempPath() + "/keepass_print_XXXXXX.html");
+    tempFile.setAutoRemove(true);
+
+    if (!tempFile.open()) {
+        qWarning() << "Failed to create temporary file for printing";
+        return QString();
+    }
+
+    QString tempPath = tempFile.fileName();
+    tempFile.close();  // Close so PwExport can write to it
+
+    // Export to HTML
+    if (!PwExport::exportDatabase(m_pwManager, tempPath, PWEXP_HTML, fieldFlags)) {
+        qWarning() << "Failed to export HTML for printing";
+        return QString();
+    }
+
+    // Read the HTML content
+    QFile file(tempPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "Failed to read temporary HTML file";
+        return QString();
+    }
+
+    QString html = QString::fromUtf8(file.readAll());
+    file.close();
+
+    // Clean up temp file
+    QFile::remove(tempPath);
+
+    return html;
 }

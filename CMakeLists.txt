@@ -9,7 +9,7 @@ set(CMAKE_AUTORCC ON)
 
 # Qt - support both Qt5 and Qt6
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} 5.15 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt${QT_VERSION_MAJOR} 5.15 REQUIRED COMPONENTS Core Gui Widgets PrintSupport LinguistTools)
 
 # OpenSSL
 find_package(OpenSSL 1.1.1 REQUIRED)
@@ -38,6 +38,26 @@ add_subdirectory(src/gui)
 
 # Auto-type system
 add_subdirectory(src/autotype)
+
+# Translations
+set(TS_FILES
+    translations/keepass_en.ts
+    translations/keepass_de.ts
+    translations/keepass_fr.ts
+    translations/keepass_es.ts
+)
+
+# Generate .qm files from .ts files
+if(Qt${QT_VERSION_MAJOR}LinguistTools_FOUND)
+    if(QT_VERSION_MAJOR EQUAL 6)
+        qt_add_translations(keepass-gui
+            TS_FILES ${TS_FILES}
+            QM_FILES_OUTPUT_VARIABLE QM_FILES
+        )
+    else()
+        qt5_add_translation(QM_FILES ${TS_FILES})
+    endif()
+endif()
 
 # Main executable
 add_executable(keepass

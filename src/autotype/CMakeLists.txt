@@ -6,8 +6,13 @@ set(AUTOTYPE_SOURCES
     AutoTypeSequence.h
     AutoTypeConfig.cpp
     AutoTypeConfig.h
+    AutoTypeMatcher.cpp
+    AutoTypeMatcher.h
+    GlobalHotkey.h
     platform/AutoTypePlatform.cpp
     platform/AutoTypePlatform.h
+    platform/WindowManager.cpp
+    platform/WindowManager.h
 )
 
 # Platform-specific sources
@@ -15,6 +20,14 @@ if(APPLE)
     list(APPEND AUTOTYPE_SOURCES
         platform/AutoTypeMac.cpp
         platform/AutoTypeMac.h
+        platform/WindowManagerMac.cpp
+        platform/WindowManagerMac.h
+        platform/GlobalHotkey_mac.cpp
+    )
+else()
+    # Stub implementation for Windows/Linux
+    list(APPEND AUTOTYPE_SOURCES
+        platform/GlobalHotkey_stub.cpp
     )
 endif()
 

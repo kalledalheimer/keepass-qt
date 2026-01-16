@@ -28,6 +28,7 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QListWidget>
+#include <QKeySequenceEdit>
 #include <QFont>
 #include <QColor>
 
@@ -71,6 +72,7 @@ public:
     // Auto-Type tab settings
     bool autoTypeEnabled() const;
     QString defaultAutoTypeSequence() const;
+    QKeySequence autoTypeGlobalHotkey() const;
 
     // Setup tab settings
     bool usePuttyForURLs() const { return m_usePuttyForURLs; }
@@ -132,6 +134,12 @@ public:
     void setClipboardNoPersist(bool noPersist);
     void setAutoTypeEnabled(bool enabled);
     void setDefaultAutoTypeSequence(const QString& sequence);
+    void setAutoTypeGlobalHotkey(const QKeySequence& hotkey);
+    void setAutoTypeMinimizeBeforeType(bool minimize);
+    void setAutoTypeSameKeyboardLayout(bool same);
+    void setAutoTypeSortSelection(bool sort);
+    void setAutoTypeNormalizeDashes(bool normalize);
+    void setAutoTypeIEFix(bool fix);
     void setUsePuttyForURLs(bool use);
     void setRememberLastFile(bool remember);
     void setAutoOpenLastDb(bool autoOpen);
@@ -231,6 +239,12 @@ private:
     // Auto-Type tab widgets
     QCheckBox* m_checkAutoTypeEnabled;
     QLineEdit* m_editDefaultAutoTypeSequence;
+    QKeySequenceEdit* m_hotkeyEdit;
+    QCheckBox* m_checkAutoTypeMinimizeBeforeType;
+    QCheckBox* m_checkAutoTypeSameKeyboardLayout;
+    QCheckBox* m_checkAutoTypeSortSelection;
+    QCheckBox* m_checkAutoTypeNormalizeDashes;
+    QCheckBox* m_checkAutoTypeIEFix;
 
     // Setup tab widgets
     QPushButton* m_btnCreateAssoc;
@@ -304,6 +318,12 @@ private:
     // Auto-Type
     bool m_autoTypeEnabled;
     QString m_defaultAutoTypeSequence;
+    QKeySequence m_autoTypeGlobalHotkey;
+    bool m_autoTypeMinimizeBeforeType;
+    bool m_autoTypeSameKeyboardLayout;
+    bool m_autoTypeSortSelection;
+    bool m_autoTypeNormalizeDashes;
+    bool m_autoTypeIEFix;
 
     // Setup
     bool m_usePuttyForURLs;
