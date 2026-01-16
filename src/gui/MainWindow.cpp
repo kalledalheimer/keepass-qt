@@ -32,6 +32,8 @@
 #include "../autotype/GlobalHotkey.h"
 #include "../plugins/PluginManager.h"
 #include "PluginsDialog.h"
+#include "MassModifyDialog.h"
+#include "FieldRefDialog.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -349,6 +351,11 @@ void MainWindow::createActions()
     m_actionEditAutoType->setEnabled(false);
     connect(m_actionEditAutoType, &QAction::triggered, this, &MainWindow::onEditAutoType);
 
+    m_actionEditMassModify = new QAction(tr("&Mass Modify..."), this);
+    m_actionEditMassModify->setStatusTip(tr("Modify multiple selected entries at once"));
+    m_actionEditMassModify->setEnabled(false);
+    connect(m_actionEditMassModify, &QAction::triggered, this, &MainWindow::onEditMassModify);
+
     // View menu actions
     m_actionViewToolbar = new QAction(tr("&Toolbar"), this);
     m_actionViewToolbar->setCheckable(true);
@@ -542,6 +549,8 @@ void MainWindow::createMenus()
     editMenu->addAction(m_actionEditVisitUrl);
     editMenu->addAction(m_actionEditAutoType);
     editMenu->addSeparator();
+    editMenu->addAction(m_actionEditMassModify);
+    editMenu->addSeparator();
     editMenu->addAction(m_actionEditFind);
 
     // View menu
@@ -644,7 +653,7 @@ void MainWindow::createCentralWidget()
     m_entryView = new QTableView(this);
     m_entryView->setModel(m_entryModel);
     m_entryView->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_entryView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_entryView->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_entryView->setContextMenuPolicy(Qt::CustomContextMenu);
     m_entryView->verticalHeader()->setVisible(false);
     m_entryView->horizontalHeader()->setStretchLastSection(true);
@@ -741,6 +750,7 @@ void MainWindow::updateActions()
     m_actionEditEditEntry->setEnabled(unlocked && hasSelection);
     m_actionEditDuplicateEntry->setEnabled(unlocked && hasSelection);
     m_actionEditDeleteEntry->setEnabled(unlocked && hasSelection);
+    m_actionEditMassModify->setEnabled(unlocked && hasSelection);
     m_actionEditDeleteGroup->setEnabled(unlocked);
 
     // Group management actions - enabled only when a group is selected
@@ -3644,6 +3654,117 @@ void MainWindow::onEditAutoType()
     entry->tLastAccess = tNow;
 
     m_statusLabel->setText(tr("Auto-type completed"));
+}
+
+void MainWindow::onEditMassModify()
+{
+    // Reference: MFC CPwSafeDlg::OnPwlistMassModify (PwSafeDlg.cpp)
+    if ((m_pwManager == nullptr) || !m_hasDatabase || m_isLocked) {
+        return;
+    }
+
+    // Get selected entries from the entry view
+    if (m_entryView == nullptr || !m_entryView->selectionModel()->hasSelection()) {
+        return;
+    }
+
+    // Collect indices of selected entries
+    QList<quint32> selectedIndices;
+    QModelIndexList selection = m_entryView->selectionModel()->selectedRows();
+
+    for (const QModelIndex& index : selection) {
+        PW_ENTRY* entry = m_entryModel->getEntry(index);
+        if (entry != nullptr) {
+            // Find the entry index in the database
+            for (quint32 i = 0; i < m_pwManager->getNumberOfEntries(); ++i) {
+                if (m_pwManager->getEntry(i) == entry) {
+                    selectedIndices.append(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    if (selectedIndices.isEmpty()) {
+        return;
+    }
+
+    // Show mass modify dialog
+    MassModifyDialog dialog(m_pwManager, selectedIndices, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    // Apply changes to all selected entries
+    int modifiedCount = 0;
+    PW_TIME tNow;
+    PwUtil::dateTimeToPwTime(QDateTime::currentDateTime(), &tNow);
+
+    for (quint32 entryIndex : selectedIndices) {
+        PW_ENTRY* entry = m_pwManager->getEntry(entryIndex);
+        if (entry == nullptr) {
+            continue;
+        }
+
+        // Create backup before modifying (if backup feature is enabled)
+        bool backupGroupCreated = false;
+        m_pwManager->backupEntry(entry, &backupGroupCreated);
+        if (backupGroupCreated) {
+            // Refresh group model if backup group was created
+            m_groupModel->refresh();
+        }
+
+        bool modified = false;
+
+        // Modify group
+        if (dialog.modifyGroup()) {
+            entry->uGroupId = dialog.getGroupId();
+            modified = true;
+        }
+
+        // Modify icon
+        if (dialog.modifyIcon()) {
+            entry->uImageId = dialog.getIconId();
+            modified = true;
+        }
+
+        // Modify expiration
+        if (dialog.modifyExpiration()) {
+            entry->tExpire = dialog.getExpirationTime();
+            modified = true;
+        }
+
+        // Delete attachments
+        if (dialog.deleteAttachments()) {
+            if (entry->pBinaryData != nullptr) {
+                delete[] entry->pBinaryData;
+                entry->pBinaryData = nullptr;
+            }
+            entry->uBinaryDataLen = 0;
+
+            if (entry->pszBinaryDesc != nullptr) {
+                delete[] entry->pszBinaryDesc;
+                entry->pszBinaryDesc = new char[1];
+                entry->pszBinaryDesc[0] = '\0';
+            }
+            modified = true;
+        }
+
+        // Update modification time
+        if (modified) {
+            entry->tLastMod = tNow;
+            ++modifiedCount;
+        }
+    }
+
+    // Update UI
+    if (modifiedCount > 0) {
+        m_isModified = true;
+        m_entryModel->refresh();
+        m_groupModel->refresh();
+        updateWindowTitle();
+        m_statusLabel->setText(tr("Modified %1 entries").arg(modifiedCount));
+    }
 }
 
 void MainWindow::startClipboardTimer()

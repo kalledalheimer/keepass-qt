@@ -4,6 +4,57 @@ Last updated: 2026-01-16
 
 ## Recent Progress
 
+### Session 21: Entry Management Features (2026-01-16)
+**Issue #28 Complete!** Entry Management Features
+- [x] **Created MassModifyDialog** (src/gui/MassModifyDialog.h/cpp ~370 lines)
+  - Batch modification of multiple selected entries
+  - Selective modification with checkboxes for each property
+  - Group change with hierarchical group dropdown
+  - Icon selection with IconPickerDialog integration
+  - Expiration modification with preset buttons (1 week, 2 weeks, 1/3/6/12 months, Now)
+  - Never expires option
+  - Attachment deletion option
+  - Validation requiring at least one modification selected
+- [x] **Created FieldRefDialog** (src/gui/FieldRefDialog.h/cpp ~380 lines)
+  - Entry list showing all entries (excluding Backup and Meta-Info)
+  - Field to reference selection (Title, Username, Password, URL, Notes)
+  - Identify by selection (Title, Username, Password, URL, Notes, UUID)
+  - UUID identification recommended as always unique
+  - Duplicate ID warning with confirmation
+  - Illegal character validation ({, }, newline)
+  - Generates {REF:X@Y:Z} syntax for clipboard/insertion
+  - Help button with syntax documentation
+- [x] **SprEngine Field Reference Support** (already implemented in Session 19)
+  - {REF:X@Y:Z} syntax parsing and resolution
+  - Cross-entry field lookup with caching
+  - Circular reference protection
+- [x] **Move Entry Up/Down** (already implemented)
+  - Alt+Up and Alt+Down keyboard shortcuts
+  - Proper group-relative positioning
+- [x] **Entry Backup Integration**
+  - PwManager::backupEntry() called before Mass Modify changes
+  - Automatic Backup group creation
+  - Entry versioning support
+- [x] **Multi-Selection Support**
+  - Changed entry view from SingleSelection to ExtendedSelection
+  - Mass Modify works with multiple selected entries
+  - Ctrl+Click and Shift+Click selection
+- [x] **MainWindow Integration**
+  - Edit > Mass Modify... menu action
+  - Action enabled when entries selected
+  - Modified count status message
+- [x] **Testing**
+  - Build: ✅ Successful (no warnings)
+  - Tests: ✅ All 3/3 unit tests passing
+- [x] **Files Created/Modified**
+  - src/gui/MassModifyDialog.h (95 lines)
+  - src/gui/MassModifyDialog.cpp (365 lines)
+  - src/gui/FieldRefDialog.h (95 lines)
+  - src/gui/FieldRefDialog.cpp (385 lines)
+  - src/gui/CMakeLists.txt (+4 lines)
+  - src/gui/MainWindow.h (+2 lines)
+  - src/gui/MainWindow.cpp (+120 lines)
+
 ### Session 20: Plugin System Implementation (2026-01-16)
 **Issue #27 Complete!** Plugin Architecture and Management
 - [x] **Created KpPluginInterface** (src/plugins/KpPluginInterface.h ~180 lines)
