@@ -20,15 +20,31 @@ namespace PwCharSets {
     const QString Special = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
     const QString Brackets = "[]{}()<>";
     const QString ConfusingChars = "O0Il1|";  // Characters that look similar
+    const QString Punctuation = ",.;:";
+    const QString LowerHex = "0123456789abcdef";
+    const QString UpperHex = "0123456789ABCDEF";
+    const QString LowerVowels = "aeiou";
+    const QString UpperVowels = "AEIOU";
+    const QString LowerConsonants = "bcdfghjklmnpqrstvwxyz";
+    const QString UpperConsonants = "BCDFGHJKLMNPQRSTVWXYZ";
 }
+
+/// Password generation mode
+enum class PasswordGeneratorMode : quint8 {
+    CharacterSet,  // Traditional character-set based generation
+    Pattern        // Pattern-based generation (e.g., "dddd-LLLL-ssss")
+};
 
 /// Password generator settings
 struct PasswordGeneratorSettings
 {
-    // Length
+    // Generation mode
+    PasswordGeneratorMode mode = PasswordGeneratorMode::CharacterSet;
+
+    // Length (used for CharacterSet mode)
     quint32 length = 20;
 
-    // Character sets (checkbox flags)
+    // Character sets (checkbox flags, used for CharacterSet mode)
     bool includeUpperCase = true;
     bool includeLowerCase = true;
     bool includeDigits = true;
@@ -45,6 +61,10 @@ struct PasswordGeneratorSettings
     bool excludeLookAlike = false;  // Exclude confusing characters (O0Il1|)
     bool noRepeatChars = false;     // Each character used at most once
     QString excludeChars;           // Additional characters to exclude
+
+    // Pattern-based settings
+    QString pattern;          // Pattern string (e.g., "dddd-LLLL-ssss")
+    bool patternPermute = false;  // Shuffle generated password after pattern generation
 
     // Build the effective character set based on settings
     QString buildCharSet() const;
@@ -80,6 +100,15 @@ private:
 
     /// Remove duplicate characters from a string
     static QString removeDuplicates(const QString& str);
+
+    /// Generate password from pattern
+    static QString generateFromPattern(const PasswordGeneratorSettings& settings, QString* error);
+
+    /// Get character set for a pattern character identifier
+    static QString getCharSetForIdentifier(QChar identifier);
+
+    /// Shuffle a string randomly (for pattern permutation)
+    static void shuffleString(QString& str);
 };
 
 #endif // PASSWORDGENERATOR_H

@@ -16,6 +16,9 @@
 #include <QProgressBar>
 #include <QLabel>
 #include <QMessageBox>
+#include <QTabWidget>
+#include <QRadioButton>
+#include <QButtonGroup>
 
 PasswordGeneratorDialog::PasswordGeneratorDialog(QWidget* parent)
     : QDialog(parent)
@@ -34,7 +37,32 @@ void PasswordGeneratorDialog::setupUI()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
-    // === Password Length Section ===
+    // === Generation Mode Selection ===
+    QGroupBox* modeGroup = new QGroupBox(tr("Generation Mode"), this);
+    QHBoxLayout* modeLayout = new QHBoxLayout(modeGroup);
+
+    m_charSetModeRadio = new QRadioButton(tr("Character Set"), this);
+    m_patternModeRadio = new QRadioButton(tr("Pattern"), this);
+    m_charSetModeRadio->setChecked(true);
+
+    QButtonGroup* modeButtonGroup = new QButtonGroup(this);
+    modeButtonGroup->addButton(m_charSetModeRadio);
+    modeButtonGroup->addButton(m_patternModeRadio);
+
+    modeLayout->addWidget(m_charSetModeRadio);
+    modeLayout->addWidget(m_patternModeRadio);
+    modeLayout->addStretch();
+
+    mainLayout->addWidget(modeGroup);
+
+    // === Tab Widget for Mode-Specific Options ===
+    m_modeTab = new QTabWidget(this);
+
+    // --- Character Set Tab ---
+    QWidget* charSetTab = new QWidget();
+    QVBoxLayout* charSetTabLayout = new QVBoxLayout(charSetTab);
+
+    // Password Length Section
     QGroupBox* lengthGroup = new QGroupBox(tr("Password Length"), this);
     QHBoxLayout* lengthLayout = new QHBoxLayout(lengthGroup);
 
@@ -52,9 +80,9 @@ void PasswordGeneratorDialog::setupUI()
     lengthLayout->addWidget(m_lengthSpin);
     lengthLayout->addWidget(m_lengthSlider);
 
-    mainLayout->addWidget(lengthGroup);
+    charSetTabLayout->addWidget(lengthGroup);
 
-    // === Character Sets Section ===
+    // Character Sets Section
     QGroupBox* charSetGroup = new QGroupBox(tr("Character Sets"), this);
     QGridLayout* charSetLayout = new QGridLayout(charSetGroup);
 
@@ -76,9 +104,9 @@ void PasswordGeneratorDialog::setupUI()
     charSetLayout->addWidget(m_specialCheck, 3, 0);
     charSetLayout->addWidget(m_bracketsCheck, 3, 1);
 
-    mainLayout->addWidget(charSetGroup);
+    charSetTabLayout->addWidget(charSetGroup);
 
-    // === Custom Character Set ===
+    // Custom Character Set
     QGroupBox* customGroup = new QGroupBox(tr("Custom Character Set (optional)"), this);
     QVBoxLayout* customLayout = new QVBoxLayout(customGroup);
 
@@ -91,9 +119,60 @@ void PasswordGeneratorDialog::setupUI()
     customLayout->addWidget(m_customCharSetEdit);
     customLayout->addWidget(customHint);
 
-    mainLayout->addWidget(customGroup);
+    charSetTabLayout->addWidget(customGroup);
+    charSetTabLayout->addStretch();
 
-    // === Advanced Options ===
+    m_modeTab->addTab(charSetTab, tr("Character Set"));
+
+    // --- Pattern Tab ---
+    QWidget* patternTab = new QWidget();
+    QVBoxLayout* patternTabLayout = new QVBoxLayout(patternTab);
+
+    QGroupBox* patternGroup = new QGroupBox(tr("Pattern"), this);
+    QVBoxLayout* patternLayout = new QVBoxLayout(patternGroup);
+
+    m_patternEdit = new QLineEdit(this);
+    m_patternEdit->setPlaceholderText(tr("e.g., dddd-LLLL-ssss"));
+    patternLayout->addWidget(m_patternEdit);
+
+    m_patternPermuteCheck = new QCheckBox(tr("Shuffle result (permute)"), this);
+    patternLayout->addWidget(m_patternPermuteCheck);
+
+    patternTabLayout->addWidget(patternGroup);
+
+    // Pattern help
+    QGroupBox* helpGroup = new QGroupBox(tr("Pattern Syntax"), this);
+    QVBoxLayout* helpLayout = new QVBoxLayout(helpGroup);
+
+    m_patternHelpLabel = new QLabel(
+        tr("<b>Character placeholders:</b><br>"
+           "d = Digit (0-9)<br>"
+           "l = Lowercase (a-z)<br>"
+           "u = Uppercase (A-Z)<br>"
+           "L = Letter (a-z, A-Z)<br>"
+           "a = Alphanumeric (a-z, 0-9)<br>"
+           "A = Alphanumeric (a-z, A-Z, 0-9)<br>"
+           "s = Special (!\"#$%%...)<br>"
+           "h = Hex lowercase (0-9, a-f)<br>"
+           "H = Hex uppercase (0-9, A-F)<br>"
+           "v = Vowel lowercase<br>"
+           "c = Consonant lowercase<br><br>"
+           "<b>Special syntax:</b><br>"
+           "\\X = Literal character X<br>"
+           "[abc] = Choose from a, b, c<br>"
+           "X{n} = Repeat X n times"), this);
+    m_patternHelpLabel->setWordWrap(true);
+    m_patternHelpLabel->setStyleSheet("font-size: 10px;");
+    helpLayout->addWidget(m_patternHelpLabel);
+
+    patternTabLayout->addWidget(helpGroup);
+    patternTabLayout->addStretch();
+
+    m_modeTab->addTab(patternTab, tr("Pattern"));
+
+    mainLayout->addWidget(m_modeTab);
+
+    // === Advanced Options (shared) ===
     QGroupBox* advancedGroup = new QGroupBox(tr("Advanced Options"), this);
     QVBoxLayout* advancedLayout = new QVBoxLayout(advancedGroup);
 
@@ -194,6 +273,12 @@ void PasswordGeneratorDialog::setupUI()
     connect(m_okButton, &QPushButton::clicked, this, &PasswordGeneratorDialog::onAccept);
     connect(m_cancelButton, &QPushButton::clicked, this, &PasswordGeneratorDialog::onCancel);
 
+    // Mode switching
+    connect(m_charSetModeRadio, &QRadioButton::toggled, this, &PasswordGeneratorDialog::onModeChanged);
+    connect(m_patternModeRadio, &QRadioButton::toggled, this, &PasswordGeneratorDialog::onModeChanged);
+    connect(m_patternEdit, &QLineEdit::textChanged, this, &PasswordGeneratorDialog::onPatternChanged);
+    connect(m_patternPermuteCheck, &QCheckBox::toggled, this, &PasswordGeneratorDialog::onPatternChanged);
+
     setMinimumWidth(550);
 }
 
@@ -201,6 +286,11 @@ PasswordGeneratorSettings PasswordGeneratorDialog::settings() const
 {
     PasswordGeneratorSettings s;
 
+    // Mode
+    s.mode = m_patternModeRadio->isChecked() ?
+             PasswordGeneratorMode::Pattern : PasswordGeneratorMode::CharacterSet;
+
+    // Character set mode settings
     s.length = m_lengthSpin->value();
 
     s.includeUpperCase = m_upperCaseCheck->isChecked();
@@ -214,6 +304,11 @@ PasswordGeneratorSettings PasswordGeneratorDialog::settings() const
 
     s.customCharSet = m_customCharSetEdit->text();
 
+    // Pattern mode settings
+    s.pattern = m_patternEdit->text();
+    s.patternPermute = m_patternPermuteCheck->isChecked();
+
+    // Advanced options (shared)
     s.excludeLookAlike = m_excludeLookAlikeCheck->isChecked();
     s.noRepeatChars = m_noRepeatCheck->isChecked();
     s.excludeChars = m_excludeCharsEdit->text();
@@ -223,6 +318,16 @@ PasswordGeneratorSettings PasswordGeneratorDialog::settings() const
 
 void PasswordGeneratorDialog::setSettings(const PasswordGeneratorSettings& s)
 {
+    // Mode
+    if (s.mode == PasswordGeneratorMode::Pattern) {
+        m_patternModeRadio->setChecked(true);
+        m_modeTab->setCurrentIndex(1);
+    } else {
+        m_charSetModeRadio->setChecked(true);
+        m_modeTab->setCurrentIndex(0);
+    }
+
+    // Character set mode settings
     m_lengthSpin->setValue(s.length);
     m_lengthSlider->setValue(qMin(static_cast<int>(s.length), 128));
 
@@ -237,6 +342,11 @@ void PasswordGeneratorDialog::setSettings(const PasswordGeneratorSettings& s)
 
     m_customCharSetEdit->setText(s.customCharSet);
 
+    // Pattern mode settings
+    m_patternEdit->setText(s.pattern);
+    m_patternPermuteCheck->setChecked(s.patternPermute);
+
+    // Advanced options
     m_excludeLookAlikeCheck->setChecked(s.excludeLookAlike);
     m_noRepeatCheck->setChecked(s.noRepeatChars);
     m_excludeCharsEdit->setText(s.excludeChars);
@@ -346,6 +456,18 @@ void PasswordGeneratorDialog::updateCharSetPreview()
 {
     PasswordGeneratorSettings s = settings();
 
+    // In pattern mode, show pattern info instead of character set size
+    if (s.mode == PasswordGeneratorMode::Pattern) {
+        if (s.pattern.isEmpty()) {
+            m_charSetSizeLabel->setText(tr("Enter a pattern to generate passwords"));
+            m_charSetSizeLabel->setStyleSheet("color: #666; font-size: 10px;");
+        } else {
+            m_charSetSizeLabel->setText(tr("Pattern mode: %1").arg(s.pattern));
+            m_charSetSizeLabel->setStyleSheet("color: #666; font-size: 10px;");
+        }
+        return;
+    }
+
     QString error;
     if (!s.isValid(&error)) {
         m_charSetSizeLabel->setText(tr("Error: %1").arg(error));
@@ -376,4 +498,20 @@ void PasswordGeneratorDialog::updateCharSetPreview()
 
     m_charSetSizeLabel->setText(tr("Character set size: %1").arg(unique.size()));
     m_charSetSizeLabel->setStyleSheet("color: #666; font-size: 10px;");
+}
+
+void PasswordGeneratorDialog::onModeChanged()
+{
+    // Switch tab to match selected mode
+    if (m_patternModeRadio->isChecked()) {
+        m_modeTab->setCurrentIndex(1);
+    } else {
+        m_modeTab->setCurrentIndex(0);
+    }
+    updateCharSetPreview();
+}
+
+void PasswordGeneratorDialog::onPatternChanged()
+{
+    updateCharSetPreview();
 }

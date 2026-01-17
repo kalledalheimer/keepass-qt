@@ -16,6 +16,8 @@ class QCheckBox;
 class QPushButton;
 class QProgressBar;
 class QLabel;
+class QTabWidget;
+class QRadioButton;
 
 /// Password Generator Dialog
 class PasswordGeneratorDialog : public QDialog
@@ -43,13 +45,20 @@ private slots:
     void onShowPasswordToggled(bool checked);
     void onPasswordTextChanged();
     void onAdvancedOptions();
+    void onModeChanged();
+    void onPatternChanged();
 
 private:
     void setupUI();
     void updatePasswordQuality();
     void updateCharSetPreview();
 
-    // UI Components
+    // UI Components - Mode selection
+    QRadioButton* m_charSetModeRadio;
+    QRadioButton* m_patternModeRadio;
+    QTabWidget* m_modeTab;
+
+    // Character set mode components
     QSpinBox* m_lengthSpin;
     QSlider* m_lengthSlider;
 
@@ -70,6 +79,11 @@ private:
     QCheckBox* m_excludeLookAlikeCheck;
     QCheckBox* m_noRepeatCheck;
     QLineEdit* m_excludeCharsEdit;
+
+    // Pattern mode components
+    QLineEdit* m_patternEdit;
+    QCheckBox* m_patternPermuteCheck;
+    QLabel* m_patternHelpLabel;
 
     // Generated password
     QLineEdit* m_passwordEdit;

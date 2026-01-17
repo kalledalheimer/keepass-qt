@@ -32,6 +32,17 @@ QString PasswordGeneratorSettings::buildCharSet() const
 
 bool PasswordGeneratorSettings::isValid(QString* error) const
 {
+    if (mode == PasswordGeneratorMode::Pattern) {
+        // Pattern mode validation
+        if (pattern.isEmpty()) {
+            if (error) *error = "Pattern is empty";
+            return false;
+        }
+        // Pattern syntax will be validated during generation
+        return true;
+    }
+
+    // Character set mode validation
     if (length == 0 || length > 30000) {
         if (error) *error = "Password length must be between 1 and 30000";
         return false;
@@ -60,7 +71,12 @@ QString PasswordGenerator::generate(const PasswordGeneratorSettings& settings, Q
         return QString();
     }
 
-    // Build character set
+    // Use pattern-based generation if in pattern mode
+    if (settings.mode == PasswordGeneratorMode::Pattern) {
+        return generateFromPattern(settings, error);
+    }
+
+    // Build character set for standard mode
     QString charSet = settings.buildCharSet();
 
     // Apply exclusions
@@ -236,6 +252,253 @@ QString PasswordGenerator::removeDuplicates(const QString& str)
             result.append(ch);
             seen.insert(ch);
         }
+    }
+
+    return result;
+}
+
+QString PasswordGenerator::getCharSetForIdentifier(QChar identifier)
+{
+    // Reference: MFC PwCharSet::AddCharSet
+    // Pattern character identifiers:
+    // a = lowercase + digits           A = lowercase + uppercase + digits
+    // U = uppercase + digits           c = lowercase consonants
+    // C = lowercase + uppercase consonants  z = uppercase consonants
+    // d = digits                        h = lowercase hex
+    // H = uppercase hex                 l = lowercase
+    // L = lowercase + uppercase         u = uppercase
+    // p = punctuation                   b = brackets
+    // s = special ASCII                 S = all printable
+    // v = lowercase vowels              V = lowercase + uppercase vowels
+    // Z = uppercase vowels
+
+    switch (identifier.unicode()) {
+    case 'a':
+        return PwCharSets::LowerCase + PwCharSets::Digits;
+    case 'A':
+        return PwCharSets::LowerCase + PwCharSets::UpperCase + PwCharSets::Digits;
+    case 'U':
+        return PwCharSets::UpperCase + PwCharSets::Digits;
+    case 'c':
+        return PwCharSets::LowerConsonants;
+    case 'C':
+        return PwCharSets::LowerConsonants + PwCharSets::UpperConsonants;
+    case 'z':
+        return PwCharSets::UpperConsonants;
+    case 'd':
+        return PwCharSets::Digits;
+    case 'h':
+        return PwCharSets::LowerHex;
+    case 'H':
+        return PwCharSets::UpperHex;
+    case 'l':
+        return PwCharSets::LowerCase;
+    case 'L':
+        return PwCharSets::LowerCase + PwCharSets::UpperCase;
+    case 'u':
+        return PwCharSets::UpperCase;
+    case 'p':
+        return PwCharSets::Punctuation;
+    case 'b':
+        return PwCharSets::Brackets;
+    case 's':
+        return PwCharSets::Special;
+    case 'S':
+        return PwCharSets::UpperCase + PwCharSets::LowerCase +
+               PwCharSets::Digits + PwCharSets::Special;
+    case 'v':
+        return PwCharSets::LowerVowels;
+    case 'V':
+        return PwCharSets::LowerVowels + PwCharSets::UpperVowels;
+    case 'Z':
+        return PwCharSets::UpperVowels;
+    default:
+        return QString();  // Unknown identifier
+    }
+}
+
+void PasswordGenerator::shuffleString(QString& str)
+{
+    // Fisher-Yates shuffle
+    for (int i = str.length() - 1; i > 0; --i) {
+        int j = Random::generateUInt32() % (i + 1);
+        QChar temp = str[i];
+        str[i] = str[j];
+        str[j] = temp;
+    }
+}
+
+QString PasswordGenerator::generateFromPattern(const PasswordGeneratorSettings& settings, QString* error)
+{
+    // Reference: MFC PatternBasedGenerator.cpp PbgGenerate
+    // Pattern syntax:
+    // - Character identifiers (a, A, d, l, L, u, s, etc.) generate random char from that set
+    // - \X = literal character X (escape)
+    // - [abc] = custom char set (choose from a, b, c)
+    // - [a^d] = char set 'a' excluding 'd' (^ toggles exclusion mode)
+    // - X{n} = repeat character set X n times
+
+    QString result;
+    const QString& pattern = settings.pattern;
+    int pos = 0;
+    QSet<QChar> usedChars;  // For no-repeat mode
+
+    while (pos < pattern.length()) {
+        QChar ch = pattern[pos];
+        QString charSet;
+
+        if (ch == '\\') {
+            // Escape sequence - use literal next character
+            ++pos;
+            if (pos >= pattern.length()) {
+                if (error != nullptr) {
+                    *error = "Invalid pattern: escape at end of pattern";
+                }
+                return QString();
+            }
+            charSet = QString(pattern[pos]);
+            ++pos;
+        }
+        else if (ch == '[') {
+            // Custom character set
+            ++pos;
+            bool exclude = false;
+
+            while (pos < pattern.length() && pattern[pos] != ']') {
+                QChar setCh = pattern[pos];
+
+                if (setCh == '\\') {
+                    // Escaped character in custom set
+                    ++pos;
+                    if (pos >= pattern.length()) {
+                        if (error != nullptr) {
+                            *error = "Invalid pattern: escape at end of custom character set";
+                        }
+                        return QString();
+                    }
+                    if (exclude) {
+                        charSet.remove(pattern[pos]);
+                    } else {
+                        charSet += pattern[pos];
+                    }
+                }
+                else if (setCh == '^') {
+                    // Toggle exclusion mode
+                    exclude = true;
+                }
+                else {
+                    // Character set identifier or literal
+                    QString subSet = getCharSetForIdentifier(setCh);
+                    if (subSet.isEmpty()) {
+                        // Not a known identifier, use as literal
+                        subSet = QString(setCh);
+                    }
+
+                    if (exclude) {
+                        for (const QChar& c : subSet) {
+                            charSet.remove(c);
+                        }
+                    } else {
+                        charSet += subSet;
+                    }
+                }
+                ++pos;
+            }
+
+            if (pos >= pattern.length()) {
+                if (error != nullptr) {
+                    *error = "Invalid pattern: unclosed '[' bracket";
+                }
+                return QString();
+            }
+            ++pos;  // Skip closing ']'
+        }
+        else {
+            // Character set identifier
+            charSet = getCharSetForIdentifier(ch);
+            if (charSet.isEmpty()) {
+                if (error != nullptr) {
+                    *error = QString("Invalid pattern: unknown character '%1'").arg(ch);
+                }
+                return QString();
+            }
+            ++pos;
+        }
+
+        // Check for repeat count {n}
+        int repeatCount = 1;
+        if (pos < pattern.length() && pattern[pos] == '{') {
+            ++pos;
+            QString countStr;
+            while (pos < pattern.length() && pattern[pos].isDigit()) {
+                countStr += pattern[pos];
+                ++pos;
+            }
+
+            if (pos >= pattern.length() || pattern[pos] != '}' || countStr.isEmpty()) {
+                if (error != nullptr) {
+                    *error = "Invalid pattern: malformed repeat count";
+                }
+                return QString();
+            }
+            ++pos;  // Skip closing '}'
+
+            bool ok = false;
+            repeatCount = countStr.toInt(&ok);
+            if (!ok || repeatCount < 0) {
+                if (error != nullptr) {
+                    *error = "Invalid pattern: invalid repeat count";
+                }
+                return QString();
+            }
+        }
+
+        // Generate characters
+        charSet = removeDuplicates(charSet);
+
+        // Apply exclusions if in no-repeat mode
+        if (settings.noRepeatChars) {
+            for (const QChar& used : usedChars) {
+                charSet.remove(used);
+            }
+        }
+
+        if (charSet.isEmpty()) {
+            if (error != nullptr) {
+                *error = "Character set is empty (too few characters for no-repeat mode)";
+            }
+            return QString();
+        }
+
+        for (int i = 0; i < repeatCount; ++i) {
+            QString currentCharSet = charSet;
+
+            // For no-repeat, we need to update the available chars after each generation
+            if (settings.noRepeatChars && i > 0) {
+                for (const QChar& used : usedChars) {
+                    currentCharSet.remove(used);
+                }
+                if (currentCharSet.isEmpty()) {
+                    if (error != nullptr) {
+                        *error = "Not enough unique characters for no-repeat mode";
+                    }
+                    return QString();
+                }
+            }
+
+            int index = Random::generateUInt32() % currentCharSet.length();
+            QChar generated = currentCharSet[index];
+            result += generated;
+
+            if (settings.noRepeatChars) {
+                usedChars.insert(generated);
+            }
+        }
+    }
+
+    // Apply permutation if requested
+    if (settings.patternPermute) {
+        shuffleString(result);
     }
 
     return result;
