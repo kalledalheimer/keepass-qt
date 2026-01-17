@@ -22,6 +22,8 @@
 #include <QProgressDialog>
 #include <QApplication>
 #include <QColor>
+#include <QFileInfo>
+#include <QLocale>
 #include <algorithm>
 #include <cmath>
 
@@ -40,6 +42,36 @@ DatabaseSettingsDialog::DatabaseSettingsDialog(PwManager* pwManager, QWidget* pa
 void DatabaseSettingsDialog::setupUI()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+
+    // === Database Information Section ===
+    QGroupBox* infoGroup = new QGroupBox(tr("Database Information"), this);
+    QGridLayout* infoLayout = new QGridLayout(infoGroup);
+
+    QLabel* filePathTitle = new QLabel(tr("File:"), this);
+    m_filePathLabel = new QLabel(tr("(No file)"), this);
+    m_filePathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_filePathLabel->setWordWrap(true);
+
+    QLabel* fileSizeTitle = new QLabel(tr("Size:"), this);
+    m_fileSizeLabel = new QLabel(tr("-"), this);
+
+    QLabel* groupCountTitle = new QLabel(tr("Groups:"), this);
+    m_groupCountLabel = new QLabel(tr("-"), this);
+
+    QLabel* entryCountTitle = new QLabel(tr("Entries:"), this);
+    m_entryCountLabel = new QLabel(tr("-"), this);
+
+    infoLayout->addWidget(filePathTitle, 0, 0);
+    infoLayout->addWidget(m_filePathLabel, 0, 1);
+    infoLayout->addWidget(fileSizeTitle, 1, 0);
+    infoLayout->addWidget(m_fileSizeLabel, 1, 1);
+    infoLayout->addWidget(groupCountTitle, 2, 0);
+    infoLayout->addWidget(m_groupCountLabel, 2, 1);
+    infoLayout->addWidget(entryCountTitle, 3, 0);
+    infoLayout->addWidget(m_entryCountLabel, 3, 1);
+    infoLayout->setColumnStretch(1, 1);
+
+    mainLayout->addWidget(infoGroup);
 
     // === Encryption Algorithm Section ===
     QGroupBox* algoGroup = new QGroupBox(tr("Encryption Algorithm"), this);
@@ -174,6 +206,51 @@ void DatabaseSettingsDialog::setDefaultUsername(const QString& username)
     m_defaultUsername = username;
     if (m_usernameEdit != nullptr) {
         m_usernameEdit->setText(username);
+    }
+}
+
+void DatabaseSettingsDialog::setFilePath(const QString& filePath)
+{
+    m_filePath = filePath;
+
+    if (m_filePathLabel != nullptr) {
+        m_filePathLabel->setText(filePath.isEmpty() ? tr("(No file)") : filePath);
+    }
+
+    // Get file info
+    if (!filePath.isEmpty()) {
+        QFileInfo fileInfo(filePath);
+        if (fileInfo.exists() && m_fileSizeLabel != nullptr) {
+            // Format file size nicely
+            qint64 size = fileInfo.size();
+            QLocale locale;
+            QString sizeStr;
+            if (size < 1024) {
+                sizeStr = tr("%1 bytes").arg(locale.toString(size));
+            } else if (size < 1024 * 1024) {
+                sizeStr = tr("%1 KB (%2 bytes)")
+                    .arg(locale.toString(static_cast<double>(size) / 1024.0, 'f', 1))
+                    .arg(locale.toString(size));
+            } else {
+                sizeStr = tr("%1 MB (%2 bytes)")
+                    .arg(locale.toString(static_cast<double>(size) / (1024.0 * 1024.0), 'f', 2))
+                    .arg(locale.toString(size));
+            }
+            m_fileSizeLabel->setText(sizeStr);
+        }
+    }
+
+    // Get group and entry counts from manager
+    if (m_pwManager != nullptr) {
+        quint32 groupCount = m_pwManager->getNumberOfGroups();
+        quint32 entryCount = m_pwManager->getNumberOfEntries();
+
+        if (m_groupCountLabel != nullptr) {
+            m_groupCountLabel->setText(QString::number(groupCount));
+        }
+        if (m_entryCountLabel != nullptr) {
+            m_entryCountLabel->setText(QString::number(entryCount));
+        }
     }
 }
 

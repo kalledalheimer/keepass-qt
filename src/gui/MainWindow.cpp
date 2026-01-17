@@ -2786,6 +2786,7 @@ void MainWindow::onToolsDatabaseSettings()
     DatabaseSettingsDialog dialog(m_pwManager, this);
 
     // Load current settings
+    dialog.setFilePath(m_currentFilePath);
     dialog.setEncryptionAlgorithm(m_pwManager->getAlgorithm());
     dialog.setKeyTransformRounds(m_pwManager->getKeyEncRounds());
     dialog.setDefaultUsername(m_pwManager->getDefaultUserName());
@@ -3035,16 +3036,21 @@ void MainWindow::onToolsRepairDatabase()
     updateActions();
     updateStatusBar();
 
-    // Show success message with repair statistics
+    // Show success message with repair statistics (recovered / original)
+    quint32 recoveredGroups = m_pwManager->getNumberOfGroups();
+    quint32 recoveredEntries = m_pwManager->getNumberOfEntries();
+
     QString successMsg = tr(
         "Database opened in repair mode.\n\n"
-        "Statistics:\n"
-        "- Groups recovered: %1\n"
-        "- Entries recovered: %2\n"
-        "- Recognized meta streams: %3\n\n"
+        "Statistics (recovered / original in file):\n"
+        "- Groups: %1 / %2\n"
+        "- Entries: %3 / %4\n"
+        "- Recognized meta streams: %5\n\n"
         "IMPORTANT: Please review all data for corruption and save to a new file.")
-        .arg(m_pwManager->getNumberOfGroups())
-        .arg(m_pwManager->getNumberOfEntries())
+        .arg(recoveredGroups)
+        .arg(repairInfo.dwOriginalGroupCount)
+        .arg(recoveredEntries)
+        .arg(repairInfo.dwOriginalEntryCount)
         .arg(repairInfo.dwRecognizedMetaStreamCount);
 
     QMessageBox::information(this, tr("Repair Successful"), successMsg);

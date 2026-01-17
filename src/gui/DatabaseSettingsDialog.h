@@ -25,6 +25,9 @@ class DatabaseSettingsDialog : public QDialog
 public:
     explicit DatabaseSettingsDialog(PwManager* pwManager, QWidget* parent = nullptr);
 
+    /// Set database file path (for info display)
+    void setFilePath(const QString& filePath);
+
     /// Get selected encryption algorithm (0 = AES, 1 = Twofish)
     int encryptionAlgorithm() const { return m_algorithm; }
 
@@ -56,7 +59,13 @@ private:
     QColor hsvToRgb(float h, float s, float v);
     float rgbToHue(const QColor& color);
 
-    // UI Components
+    // UI Components - Info section
+    QLabel* m_filePathLabel;
+    QLabel* m_fileSizeLabel;
+    QLabel* m_groupCountLabel;
+    QLabel* m_entryCountLabel;
+
+    // UI Components - Settings
     QComboBox* m_algorithmCombo;
     QSpinBox* m_roundsSpin;
     QPushButton* m_calculateButton;
@@ -69,6 +78,7 @@ private:
 
     // Data
     PwManager* m_pwManager;
+    QString m_filePath;
     int m_algorithm;
     quint32 m_keyRounds;
     QString m_defaultUsername;
