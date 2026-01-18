@@ -1,8 +1,27 @@
 # Active Tasks
 
-Last updated: 2026-01-16
+Last updated: 2026-01-18
 
 ## Recent Progress
+
+### Session 22: Entropy Collector Dialog (2026-01-18)
+**Task #32 Enhancement!** Random Entropy Collector Dialog Implementation
+- [x] **Created EntropyCollectorDialog** (src/gui/EntropyCollectorDialog.h/cpp ~275 lines)
+  - Mouse movement entropy collection (up to 100 points in visual area)
+  - Keyboard input entropy collection (text typed by user)
+  - Progress bar showing collection status
+  - Visual feedback with color-coded states (idle/active/complete)
+  - SHA-256 combination of all entropy sources
+  - Integration with global Random pool via Random::addEntropy()
+  - Reference: MFC/MFC-KeePass/WinGUI/GetRandomDlg.cpp
+- [x] **Testing**
+  - Build: ✅ Successful (no warnings)
+  - Tests: ✅ All 3/3 unit tests passing
+- [x] **Files Created**
+  - src/gui/EntropyCollectorDialog.h (64 lines)
+  - src/gui/EntropyCollectorDialog.cpp (210 lines)
+- [x] **Files Modified**
+  - src/gui/CMakeLists.txt (+2 lines)
 
 ### Session 21: Entry Management Features (2026-01-16)
 **Issue #28 Complete!** Entry Management Features
@@ -529,12 +548,12 @@ Last updated: 2026-01-16
   - Show expired entries tool
   - Show entries expiring soon (7-day default)
 
-- [x] Implement Advanced Dialogs (#32) - **PARTIALLY COMPLETE** ✅
+- [x] Implement Advanced Dialogs (#32) - **COMPLETE** ✅
   - Icon picker dialog (custom icons) - **COMPLETE** ✅
   - Language selection dialog (deferred - requires i18n infrastructure)
   - Update checker dialog (deferred - low priority)
-  - Advanced password generator (pattern-based) - **ALREADY IMPLEMENTED** ✅
-  - Random entropy collector (deferred - modern RNGs sufficient)
+  - Advanced password generator (pattern-based) - **COMPLETE** ✅
+  - Random entropy collector - **COMPLETE** ✅ (Session 22)
 
 **Goal:** Complete advanced features for power users
 
@@ -650,16 +669,11 @@ Features intentionally postponed with clear rationale. To be revisited when infr
   - **Effort**: Medium (1 week)
   - **Reference**: MFC `UpdateCheck` (WinGUI/Util/UpdateCheckEx.cpp)
 
-- [ ] **Random Entropy Collector Dialog**
-  - Collect random data from mouse movement
-  - Mix with system RNG for paranoid users
-  - **Rationale**: Modern OS RNGs are cryptographically secure
-  - **Technical Note**:
-    - OpenSSL RAND_bytes() uses /dev/urandom (Unix) or CryptGenRandom (Windows)
-    - Additional entropy collection provides minimal security benefit
-    - Feature is "security theater" for most users
-  - **Status**: Very low priority, may not implement
-  - **Effort**: Low (2-3 hours)
+- [x] **Random Entropy Collector Dialog** - **COMPLETE** ✅ (Session 22)
+  - Collect random data from mouse movement and keyboard input
+  - Mix with system RNG via Random::addEntropy()
+  - **Implementation**: EntropyCollectorDialog with visual feedback
+  - **Status**: Implemented in Session 22 (2026-01-18)
   - **Reference**: MFC `CGetRandomDlg` (WinGUI/GetRandomDlg.h/cpp)
 
 ### Global Hotkey (Task #24 / Issue #35)
