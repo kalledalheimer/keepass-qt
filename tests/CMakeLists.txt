@@ -72,7 +72,29 @@ set_tests_properties(test_crypto_primitives PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+# Test: Performance Benchmarks (not run by default - takes time)
+add_executable(test_performance
+    test_performance.cpp
+)
+
+target_link_libraries(test_performance
+    PRIVATE
+        keepass-core
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Test
+)
+
+set_target_properties(test_performance PROPERTIES
+    AUTOMOC ON
+)
+
+# Note: Performance test is NOT added to CTest by default
+# Run manually with: ./build/tests/test_performance
+# To include in CTest, uncomment the following:
+# add_test(NAME test_performance COMMAND test_performance)
+
 message(STATUS "Tests configured: test_pwmanager, test_mfc_compatibility, test_crypto_primitives")
+message(STATUS "Benchmark configured: test_performance (run manually)")
 
 # Add validation tools subdirectory
 add_subdirectory(tools)
