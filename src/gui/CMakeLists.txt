@@ -23,6 +23,8 @@ add_library(keepass-gui STATIC
     FindDialog.h
     PasswordGeneratorDialog.cpp
     PasswordGeneratorDialog.h
+    EntropyCollectorDialog.cpp
+    EntropyCollectorDialog.h
     DatabaseSettingsDialog.cpp
     DatabaseSettingsDialog.h
     OptionsDialog.cpp
