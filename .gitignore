@@ -42,6 +42,9 @@ qrc_*.cpp
 Makefile
 *.cbp
 
+# Doxygen generated documentation
+docs/api/
+
 # Temporary files
 *.log
 *.bak

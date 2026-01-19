@@ -94,6 +94,20 @@ install(TARGETS keepass
 enable_testing()
 add_subdirectory(tests)
 
+# Documentation with Doxygen (optional)
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(doc
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM
+    )
+    message(STATUS "Doxygen found - use 'cmake --build . --target doc' to generate documentation")
+else()
+    message(STATUS "Doxygen not found - documentation target not available")
+endif()
+
 # Print configuration summary
 message(STATUS "")
 message(STATUS "Qt-KeePass Configuration Summary")
