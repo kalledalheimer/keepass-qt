@@ -54,6 +54,10 @@ add_library(keepass-core STATIC
     SprEngine.cpp
     SprEngine.h
 
+    # Update Checker
+    UpdateChecker.cpp
+    UpdateChecker.h
+
     # Constants
     PwConstants.h
 
@@ -68,6 +72,7 @@ target_link_libraries(keepass-core
     PUBLIC
         Qt${QT_VERSION_MAJOR}::Core
         Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Network
     PRIVATE
         OpenSSL::Crypto
 )

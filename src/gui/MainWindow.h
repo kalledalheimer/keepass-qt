@@ -27,6 +27,7 @@
 class PwManager;
 class GroupModel;
 class EntryModel;
+class UpdateChecker;
 
 class MainWindow : public QMainWindow
 {
@@ -119,8 +120,13 @@ private slots:
 
     // Help menu
     void onHelpContents();
+    void onHelpCheckUpdates();
     void onHelpLanguages();
     void onHelpAbout();
+
+    // Update checker
+    void onUpdateCheckCompleted();
+    void onUpdateCheckFailed(const QString& errorMessage);
 
     // Selection changes
     void onGroupSelectionChanged();
@@ -283,6 +289,7 @@ private:
 
     // Actions - Help
     QAction *m_actionHelpContents;
+    QAction *m_actionHelpCheckUpdates;
     QAction *m_actionHelpLanguages;
     QAction *m_actionHelpAbout;
 
@@ -308,6 +315,9 @@ private:
     QAction *m_actionTrayRestore;
     QAction *m_actionTrayLock;
     QAction *m_actionTrayExit;
+
+    // Update checker
+    UpdateChecker *m_updateChecker;
 };
 
 #endif // MAINWINDOW_H

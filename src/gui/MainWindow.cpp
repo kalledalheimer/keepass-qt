@@ -34,6 +34,8 @@
 #include "PluginsDialog.h"
 #include "MassModifyDialog.h"
 #include "FieldRefDialog.h"
+#include "UpdateInfoDialog.h"
+#include "../core/UpdateChecker.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -90,6 +92,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_inactivityTimeoutMs(300000)  // Default: 5 minutes
     , m_systemTrayIcon(nullptr)
     , m_trayIconMenu(nullptr)
+    , m_updateChecker(nullptr)
 {
     // Connect clipboard timer
     connect(m_clipboardTimer, &QTimer::timeout, this, &MainWindow::onClipboardTimer);
@@ -478,6 +481,10 @@ void MainWindow::createActions()
     m_actionHelpContents->setStatusTip(tr("Show help contents"));
     connect(m_actionHelpContents, &QAction::triggered, this, &MainWindow::onHelpContents);
 
+    m_actionHelpCheckUpdates = new QAction(tr("Check for &Updates..."), this);
+    m_actionHelpCheckUpdates->setStatusTip(tr("Check for available updates"));
+    connect(m_actionHelpCheckUpdates, &QAction::triggered, this, &MainWindow::onHelpCheckUpdates);
+
     m_actionHelpLanguages = new QAction(tr("&Languages..."), this);
     m_actionHelpLanguages->setStatusTip(tr("Select application language"));
     connect(m_actionHelpLanguages, &QAction::triggered, this, &MainWindow::onHelpLanguages);
@@ -607,6 +614,7 @@ void MainWindow::createMenus()
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
     helpMenu->addAction(m_actionHelpContents);
     helpMenu->addSeparator();
+    helpMenu->addAction(m_actionHelpCheckUpdates);
     helpMenu->addAction(m_actionHelpLanguages);
     helpMenu->addSeparator();
     helpMenu->addAction(m_actionHelpAbout);
@@ -3095,6 +3103,46 @@ void MainWindow::onHelpAbout()
                          "<p>A free, open source password manager.</p>"
                          "<p>Copyright © 2025</p>"
                          "<p>Licensed under GPL v2+</p>"));
+}
+
+void MainWindow::onHelpCheckUpdates()
+{
+    // Create update checker if needed
+    if (m_updateChecker == nullptr) {
+        m_updateChecker = new UpdateChecker(this);
+        connect(m_updateChecker, &UpdateChecker::checkCompleted,
+                this, &MainWindow::onUpdateCheckCompleted);
+        connect(m_updateChecker, &UpdateChecker::checkFailed,
+                this, &MainWindow::onUpdateCheckFailed);
+    }
+
+    // Show status
+    m_statusLabel->setText(tr("Checking for updates..."));
+
+    // Start async check
+    m_updateChecker->checkForUpdates();
+}
+
+void MainWindow::onUpdateCheckCompleted()
+{
+    // Update status bar
+    m_statusLabel->setText(m_updateChecker->statusMessage());
+
+    // Show the update info dialog
+    UpdateInfoDialog dlg(this);
+    dlg.setUpdateInfo(m_updateChecker->components(),
+                      m_updateChecker->statusMessage(),
+                      m_updateChecker->hasError());
+    dlg.exec();
+}
+
+void MainWindow::onUpdateCheckFailed(const QString& errorMessage)
+{
+    // Update status bar
+    m_statusLabel->setText(errorMessage);
+
+    // Show error message
+    QMessageBox::warning(this, tr("Update Check Failed"), errorMessage);
 }
 
 void MainWindow::onGroupSelectionChanged()

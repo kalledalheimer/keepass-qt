@@ -9,7 +9,7 @@ set(CMAKE_AUTORCC ON)
 
 # Qt - support both Qt5 and Qt6
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} 5.15 REQUIRED COMPONENTS Core Gui Widgets PrintSupport LinguistTools)
+find_package(Qt${QT_VERSION_MAJOR} 5.15 REQUIRED COMPONENTS Core Gui Widgets Network PrintSupport LinguistTools)
 
 # OpenSSL
 find_package(OpenSSL 1.1.1 REQUIRED)

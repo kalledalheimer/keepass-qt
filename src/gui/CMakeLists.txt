@@ -51,6 +51,8 @@ add_library(keepass-gui STATIC
     MassModifyDialog.h
     FieldRefDialog.cpp
     FieldRefDialog.h
+    UpdateInfoDialog.cpp
+    UpdateInfoDialog.h
 
     # Icon management
     IconManager.cpp
