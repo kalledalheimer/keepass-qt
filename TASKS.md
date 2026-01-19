@@ -1,8 +1,36 @@
 # Active Tasks
 
-Last updated: 2026-01-18
+Last updated: 2026-01-19
 
 ## Recent Progress
+
+### Session 24: Update Checker (2026-01-19)
+**Issue #37 Complete!** Update Checker Implementation
+- [x] **Created UpdateChecker Core** (src/core/UpdateChecker.h/cpp ~325 lines)
+  - Async HTTP requests with 5-second timeout
+  - Version parsing and comparison logic
+  - Component status tracking (up-to-date, update available, pre-release)
+  - Version format: 64-bit packed (major<<48|minor<<32|build<<16|revision)
+- [x] **Created UpdateInfoDialog UI** (src/gui/UpdateInfoDialog.h/cpp ~210 lines)
+  - Table-based component status display
+  - Color-coded status indicators
+  - "Visit Website" button for downloads
+- [x] **Integration with MainWindow**
+  - "Check for Updates" menu item in Help menu
+  - Status bar feedback during check
+  - Error handling with user-friendly messages
+- [x] **Configuration**
+  - Version URL: https://www.dalheimer.de/update/version1x.txt
+  - Qt Network module integrated
+- [x] **Testing**
+  - Build: ✅ Successful
+  - Tests: ✅ All 3/3 unit tests passing
+- [x] **Files Created**
+  - src/core/UpdateChecker.h/cpp (325 lines)
+  - src/gui/UpdateInfoDialog.h/cpp (210 lines)
+- [x] **Files Modified**
+  - CMakeLists.txt, src/core/CMakeLists.txt, src/gui/CMakeLists.txt
+  - src/gui/MainWindow.h/cpp
 
 ### Session 23: Performance Benchmarks (2026-01-18)
 **Issue #13 Complete!** Performance Benchmarking
